@@ -733,7 +733,7 @@ void WorkspaceApplication::pointer(const PointerEvent& event) {
     for (const auto& [tab, button] : host->buttons) {
       if (host->tabScroll->containsScenePoint(x, y)
           && button->containsScenePoint(x, y)
-          && !host->closeButtons.at(tab).first->containsScenePoint(x, y)
+          && (event.button == BTN_MIDDLE || !host->closeButtons.at(tab).first->containsScenePoint(x, y))
           && event.type == PointerEvent::Type::Button
           && event.pressed) {
         if (event.button == BTN_MIDDLE) {
