@@ -252,8 +252,8 @@ bool luciole::DirectoryModel::less(const SortItem& leftItem, const SortItem& rig
   if (leftItem.hidden != rightItem.hidden) {
     return !leftItem.hidden;
   }
-  if (m_sort.directoriesFirst && (leftItem.type == FileType::Directory) != (rightItem.type == FileType::Directory)) {
-    return leftItem.type == FileType::Directory;
+  if (m_sort.directoriesFirst && leftItem.directory != rightItem.directory) {
+    return leftItem.directory;
   }
   if (needsTextSortKey(m_sort.field)) {
     const auto* first = m_alternateKeys[leftItem.source];
@@ -366,8 +366,8 @@ void luciole::DirectoryModel::rebuildProjection() {
         && (m_filterKey.empty() || filterText(source).contains(m_filterKey))
         && (!m_entryFilter || m_entryFilter(entry, m_snapshot.entries.known(source)))) {
       items.push_back(
-          {entry.id, static_cast<std::uint32_t>(source), entry.type, entry.hidden, &m_presentations[source],
-           m_snapshot.entries.known(source)}
+          {entry.id, static_cast<std::uint32_t>(source), entry.type == FileType::Directory || entry.linksToDirectory,
+           entry.hidden, &m_presentations[source], m_snapshot.entries.known(source)}
       );
     }
   }

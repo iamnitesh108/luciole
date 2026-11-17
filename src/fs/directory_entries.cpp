@@ -174,7 +174,15 @@ luciole::EntryBrief luciole::BrowseCatalogue::brief(std::size_t index) const {
   const auto& item = items[index];
   const auto name = std::string_view(names).substr(item.offset, item.length);
   const auto display = displayNames.find(index);
-  return {item.id, name, display == displayNames.end() ? name : display->second, item.type, item.hidden, item.symlink};
+  return {
+      item.id,
+      name,
+      display == displayNames.end() ? name : display->second,
+      item.type,
+      item.hidden,
+      item.symlink,
+      item.linksToDirectory
+  };
 }
 
 struct luciole::DirectoryEntries::Storage {
@@ -197,7 +205,8 @@ struct luciole::DirectoryEntries::Storage {
         return catalogue->brief(index);
       }
       const auto& entry = entries[index];
-      return {entry.id, entry.name, entry.displayName(), entry.type, entry.hidden, entry.symlink};
+      return {entry.id,     entry.name,    entry.displayName(),   entry.type,
+              entry.hidden, entry.symlink, entry.linksToDirectory};
     }
     const DirectoryEntry& entry(std::size_t index) const {
       if (const auto* entry = known(index)) {
@@ -214,6 +223,7 @@ struct luciole::DirectoryEntries::Storage {
         entry.type = item.type;
         entry.hidden = item.hidden;
         entry.symlink = item.symlink;
+        entry.linksToDirectory = item.linksToDirectory;
         entry.metadataPending = true;
         entry.queriedDetails = 0;
       }
@@ -233,8 +243,9 @@ struct luciole::DirectoryEntries::Storage {
     const DirectoryEntry* known() const { return payload ? payload->known(index) : direct; }
     const DirectoryEntry& entry() const { return payload ? payload->entry(index) : *direct; }
     EntryBrief brief() const {
-      return payload ? payload->brief(index) : EntryBrief{direct->id,   direct->name,   direct->displayName(),
-                                                          direct->type, direct->hidden, direct->symlink};
+      return payload ? payload->brief(index)
+                     : EntryBrief{direct->id,     direct->name,    direct->displayName(),   direct->type,
+                                  direct->hidden, direct->symlink, direct->linksToDirectory};
     }
     Location location() const {
       return payload && payload->catalogue ? payload->catalogue->folder->child(std::string(payload->brief(index).name))
@@ -287,7 +298,7 @@ std::size_t luciole::DirectoryEntries::size() const { return m_storage ? m_stora
 luciole::EntryBrief luciole::DirectoryEntries::brief(std::size_t index) const {
   if (!m_storage->directRows.empty()) {
     const auto& entry = *m_storage->directRows[index];
-    return {entry.id, entry.name, entry.displayName(), entry.type, entry.hidden, entry.symlink};
+    return {entry.id, entry.name, entry.displayName(), entry.type, entry.hidden, entry.symlink, entry.linksToDirectory};
   }
   const auto row = m_storage->row(index);
   return row.brief();

@@ -241,6 +241,23 @@ namespace {
     model.setSort({.directoriesFirst = false});
     rows(model, {20, 1, 2, 10, 30});
 
+    // A link to a folder sorts with the folders; a file link stays with the files.
+    data.entries = {
+        entry(1, "b-folder", luciole::FileType::Directory), entry(2, "a-link", luciole::FileType::Symlink),
+        entry(3, "c-link", luciole::FileType::Symlink), entry(4, "a-file")
+    };
+    test::editEntries(data, [&](auto& entries) {
+      for (auto& item : entries) {
+        item.symlink = item.type == luciole::FileType::Symlink;
+      }
+      entries[2].linksToDirectory = true;
+    });
+    model.setSort({});
+    model.applySnapshot(data);
+    rows(model, {1, 3, 4, 2});
+    model.setSort({.directoriesFirst = false});
+    rows(model, {4, 2, 1, 3});
+
     data.entries = {entry(1, "a"), entry(2, "b"), entry(3, "c")};
     test::editEntries(data, [&](auto& entries) {
       entries[0].size = 0;

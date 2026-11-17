@@ -116,7 +116,7 @@ namespace luciole {
     struct SortItem {
       EntryId id;
       std::uint32_t source;
-      FileType type;
+      bool directory; // A folder or a link to one, for Folders first.
       bool hidden;
       const Presentation* presentation;
       const DirectoryEntry* entry;

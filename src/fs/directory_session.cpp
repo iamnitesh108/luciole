@@ -450,6 +450,7 @@ struct luciole::DirectorySession::State : std::enable_shared_from_this<State> {
           entry.hidden = brief.hidden;
         }
         entry.id = brief.id;
+        entry.linksToDirectory = brief.linksToDirectory;
         entry.metadataPending = false;
         entry.metadataFailed = !info;
         entry.queriedDetails = info ? details : EntryDetails::All;

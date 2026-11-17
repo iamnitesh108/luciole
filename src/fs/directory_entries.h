@@ -70,6 +70,8 @@ namespace luciole {
     FileType type = FileType::Unknown;
     bool hidden = false;
     bool symlink = false;
+    // A symlink whose target is a folder. Only native listings follow links to learn this.
+    bool linksToDirectory = false;
     // Local listings leave access read/write/execute unknown; entryAccess() asks the filesystem when they matter.
     bool accessDeferred = false;
     // A browse catalogue knows the name/kind before its worker has queried detailed facts.
@@ -123,6 +125,7 @@ namespace luciole {
     FileType type;
     bool hidden;
     bool symlink;
+    bool linksToDirectory;
   };
 
   // Native browse names and dirent kinds. Detailed GIO facts are prepared separately on demand.
@@ -135,6 +138,7 @@ namespace luciole {
       FileType type = FileType::Unknown;
       bool hidden : 1 = false;
       bool symlink : 1 = false;
+      bool linksToDirectory : 1 = false;
     };
     std::shared_ptr<const Location> folder;
     std::uint64_t device = 0;

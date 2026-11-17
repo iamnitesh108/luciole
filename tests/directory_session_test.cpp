@@ -652,6 +652,7 @@ namespace {
     write(".hidden", "regular.txt\npicture\n", fs::perms::owner_read | fs::perms::owner_write);
     fs::create_symlink("regular.txt", fixture.path / "link");
     fs::create_symlink("missing", fixture.path / "broken");
+    fs::create_directory_symlink("locked", fixture.path / "folder-link");
     TEST_CHECK(::mkfifo((fixture.path / "fifo").c_str(), 0600) == 0);
     fs::create_directory(fixture.path / "locked");
     std::ofstream(fixture.path / "locked" / "inner") << "inner";
@@ -664,6 +665,11 @@ namespace {
       TEST_CHECK(!session.snapshot().entries.empty());
       for (const auto& entry : session.snapshot().entries) {
         compareWithGio(entry);
+      }
+      if (folder == fixture.path) {
+        TEST_CHECK(entry(session, "folder-link").linksToDirectory);
+        TEST_CHECK(!entry(session, "link").linksToDirectory && !entry(session, "broken").linksToDirectory);
+        TEST_CHECK(!entry(session, "locked").linksToDirectory);
       }
     }
     // Root can retain write access after chmod, including in the CI container.
@@ -712,12 +718,13 @@ namespace {
     fixture.write(".hidden", "file10.txt\n");
     fs::create_directory(fixture.path / "folder");
     fs::create_symlink("missing", fixture.path / "broken");
+    fs::create_directory_symlink("folder", fixture.path / "folder-link");
     DirectorySession session;
     session.setCatalogueEnabled(true);
     session.open(fixture.location());
     ready(pump, session);
     const auto initial = session.snapshot().entries;
-    TEST_CHECK(initial.isCatalogue() && initial.size() == 1406);
+    TEST_CHECK(initial.isCatalogue() && initial.size() == 1407);
     const auto find = [&](const std::string& name) {
       for (std::size_t i = 0; i < initial.size(); ++i) {
         if (initial.brief(i).name == name) {
@@ -730,19 +737,27 @@ namespace {
     const auto hiddenIndex = find("file10.txt");
     const auto pictureIndex = find("picture");
     const auto brokenIndex = find("broken");
+    const auto folderLinkIndex = find("folder-link");
     TEST_CHECK(initial.brief(rawIndex).displayName != raw);
     TEST_CHECK(initial.brief(hiddenIndex).hidden && initial.brief(brokenIndex).symlink);
+    TEST_CHECK(initial.brief(folderLinkIndex).linksToDirectory && !initial.brief(brokenIndex).linksToDirectory);
+    TEST_CHECK(!initial.brief(find("folder")).linksToDirectory);
     TEST_CHECK(initial.location(rawIndex).nativePath() == (fixture.path / raw).native());
     for (std::size_t i = 0; i < initial.size(); ++i) {
       TEST_CHECK(!initial.known(i));
     }
     const auto& pending = initial[pictureIndex];
     TEST_CHECK(pending.metadataPending && !pending.size && !pending.identity());
-    for (const auto index : {rawIndex, hiddenIndex, pictureIndex, brokenIndex}) {
+    for (const auto index : {rawIndex, hiddenIndex, pictureIndex, brokenIndex, folderLinkIndex}) {
       session.requestMetadata(index, initial.brief(index).id, luciole::EntryDetails::All);
     }
-    pump.until([&] { return session.snapshot().entries.known(pictureIndex) != nullptr; });
+    pump.until([&] {
+      const auto& entries = session.snapshot().entries;
+      return entries.known(pictureIndex) != nullptr && entries.known(folderLinkIndex) != nullptr;
+    });
     const auto rich = session.snapshot().entries;
+    // GIO details never report a link's target, so they keep the catalogue's.
+    TEST_CHECK(rich.known(folderLinkIndex)->linksToDirectory);
     TEST_CHECK(rich.sameCatalogue(initial) && pending.metadataPending && !initial.known(pictureIndex));
     const auto& picture = *rich.known(pictureIndex);
     TEST_CHECK(!picture.metadataPending && !picture.metadataFailed && picture.contentType == "image/png");

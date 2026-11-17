@@ -26,7 +26,8 @@ namespace luciole {
   // Lists a local folder on a worker. The eager path stats each entry; a large browse catalogue reads names and
   // dirent kinds, with statx only for missing kinds and mount-root lost+found hiddenness.
   // Every fact equals what GIO's local backend reports for the session's attributes with NOFOLLOW_SYMLINKS, except
-  // access read/write/execute, which are deferred to entryAccess(), and the content type of `uncertain` entries.
+  // access read/write/execute, which are deferred to entryAccess(), the content type of `uncertain` entries, and
+  // linksToDirectory, which follows each symlink once.
   // Network and FUSE filesystems, unreadable entries and any other failure report unsupported. A cancelled listing
   // is empty.
   NativeListing
