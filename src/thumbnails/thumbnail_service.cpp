@@ -3,6 +3,7 @@
 #include "core/log.h"
 #include "fs/gio_interop.h"
 #include "fs/gio_ptr.h"
+#include "fs/native_listing.h"
 #include "fs/posix_fd.h"
 #include "thumbnails/thumbnail_codec.h"
 #include "thumbnails/thumbnail_provider.h"
@@ -86,15 +87,8 @@ namespace {
     if (g_cancellable_is_cancelled(cancel)) {
       return result;
     }
-    if (options.policy == ThumbnailPolicy::Local) {
-      const GioPtr<GFileInfo> filesystem(
-          g_file_query_filesystem_info(gioFile(location).get(), G_FILE_ATTRIBUTE_FILESYSTEM_REMOTE, cancel, nullptr)
-      );
-      if (!filesystem
-          || !g_file_info_has_attribute(filesystem.get(), G_FILE_ATTRIBUTE_FILESYSTEM_REMOTE)
-          || g_file_info_get_attribute_boolean(filesystem.get(), G_FILE_ATTRIBUTE_FILESYSTEM_REMOTE)) {
-        return result;
-      }
+    if (options.policy == ThumbnailPolicy::Local && networkFilesystem(*native)) {
+      return result;
     }
     const std::string mime(source.contentType.value_or(""));
     const bool media = mime.starts_with("video/") || mime.starts_with("audio/");

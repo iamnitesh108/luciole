@@ -856,6 +856,12 @@ namespace {
     TEST_CHECK(session.snapshot().entries.front().name == "inside");
     fs::permissions(fixture.path / "closed", fs::perms::owner_all);
   }
+
+  void testNetworkFilesystem() {
+    const Fixture fixture;
+    TEST_CHECK(!luciole::networkFilesystem(fixture.path.native()));
+    TEST_CHECK(luciole::networkFilesystem((fixture.path / "missing").native()));
+  }
 } // namespace
 
 int main() {
@@ -888,6 +894,7 @@ int main() {
     testCapabilityLifecycle(pump);
     testNativeMatchesGio(pump);
     testNativeUnsupportedFallsBack(pump);
+    testNetworkFilesystem();
     testDeferredSniffing(pump);
     testBrowseCatalogue(pump);
     testCatalogueContinuity();
