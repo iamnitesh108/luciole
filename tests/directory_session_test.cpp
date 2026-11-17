@@ -14,10 +14,12 @@
 #include <format>
 #include <fstream>
 #include <functional>
+#include <linux/magic.h>
 #include <print>
 #include <stdexcept>
 #include <string>
 #include <sys/stat.h>
+#include <sys/sysmacros.h>
 #include <thread>
 #include <unistd.h>
 
@@ -861,6 +863,17 @@ namespace {
     const Fixture fixture;
     TEST_CHECK(!luciole::networkFilesystem(fixture.path.native()));
     TEST_CHECK(luciole::networkFilesystem((fixture.path / "missing").native()));
+    constexpr std::uint32_t kFuse = 0x65735546;
+    const dev_t disk = makedev(8, 1);
+    const dev_t anonymous = makedev(0, 63);
+    struct statfs filesystem{};
+    filesystem.f_type = kFuse;
+    TEST_CHECK(luciole::networkFilesystem(filesystem, anonymous));
+    TEST_CHECK(!luciole::networkFilesystem(filesystem, disk));
+    filesystem.f_type = NFS_SUPER_MAGIC;
+    TEST_CHECK(luciole::networkFilesystem(filesystem, anonymous));
+    filesystem.f_type = EXT4_SUPER_MAGIC;
+    TEST_CHECK(!luciole::networkFilesystem(filesystem, disk));
   }
 } // namespace
 

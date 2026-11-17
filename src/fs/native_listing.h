@@ -8,6 +8,8 @@
 #include <optional>
 #include <span>
 #include <string>
+#include <sys/statfs.h>
+#include <sys/types.h>
 #include <vector>
 
 namespace luciole {
@@ -41,6 +43,8 @@ namespace luciole {
   // Whether reading the file or folder at path may go over a network: network filesystems and FUSE mounts without a
   // local disk, such as rclone and sshfs. True when the filesystem cannot be determined. Blocking: worker threads only.
   bool networkFilesystem(const std::string& path);
+  // The same decision from a path's statfs result and the st_dev of its stat result.
+  bool networkFilesystem(const struct statfs& filesystem, dev_t device);
   // GIO's content type of a local file, sniffing its contents when the name is not decisive; nullopt when GIO
   // reports none. Blocking: worker threads only.
   std::optional<std::string> sniffContentType(const std::string& path);

@@ -13,7 +13,11 @@ namespace luciole {
     // Safety caps only: released images normally leave when they go unseen past an idle limit.
     static constexpr std::size_t kResidentBudget = 256U * 1024U * 1024U;
     static constexpr std::size_t kMaxEntries = 4096;
+    // Whether reading a local path may go over a network; the Local policy generates nothing there. Called on
+    // worker threads.
+    using NetworkFilesystemCheck = std::function<bool(const std::string& path)>;
     ThumbnailService();
+    explicit ThumbnailService(NetworkFilesystemCheck networkFilesystem);
     // Concurrent decoder helpers: a quarter of the CPUs, at least two and at most six.
     static std::size_t decoders();
     ~ThumbnailService();

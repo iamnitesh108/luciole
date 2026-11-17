@@ -494,9 +494,13 @@ bool luciole::networkFilesystem(const std::string& path) {
   if (::statfs(path.c_str(), &filesystem) != 0 || ::stat(path.c_str(), &info) != 0) {
     return true;
   }
+  return networkFilesystem(filesystem, info.st_dev);
+}
+
+bool luciole::networkFilesystem(const struct statfs& filesystem, dev_t device) {
   // Block-backed FUSE mounts such as ntfs-3g have a disk's device number; rclone and sshfs mounts have none.
   if (static_cast<std::uint32_t>(filesystem.f_type) == kFuse) {
-    return major(info.st_dev) == 0;
+    return major(device) == 0;
   }
   return remoteFilesystem(filesystem);
 }

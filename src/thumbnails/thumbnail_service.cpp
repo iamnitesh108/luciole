@@ -66,8 +66,9 @@ namespace {
     bool decodeNeeded = false;
   };
   LoadResult load(
-      const luciole::DirectoryEntry& source, int side, const luciole::ThumbnailOptions& options, GCancellable* cancel,
-      bool generate, luciole::ThumbnailPurpose purpose
+      const luciole::DirectoryEntry& source, int side, const luciole::ThumbnailOptions& options,
+      const luciole::ThumbnailService::NetworkFilesystemCheck& networkFilesystem, GCancellable* cancel, bool generate,
+      luciole::ThumbnailPurpose purpose
   ) {
     using namespace luciole;
     LoadResult result;
@@ -229,6 +230,7 @@ struct luciole::ThumbnailService::State : std::enable_shared_from_this<State> {
   };
   static constexpr std::size_t kWriteBudget = 64U * 1024U * 1024U;
   ThumbnailOptions options;
+  NetworkFilesystemCheck networkFilesystem;
   std::unordered_map<std::string, Item> cache;
   std::unordered_map<const FileIconImage*, Item*> leases;
   std::function<void()> changed;
@@ -519,7 +521,10 @@ struct luciole::ThumbnailService::State : std::enable_shared_from_this<State> {
       const auto& request = *static_cast<Request*>(data);
       auto result = std::make_unique<Result>();
       try {
-        result->loaded = load(request.source, request.side, request.options, cancel, request.generate, request.purpose);
+        result->loaded = load(
+            request.source, request.side, request.options, request.owner->networkFilesystem, cancel, request.generate,
+            request.purpose
+        );
       } catch (const std::exception& error) {
         result->error = error.what();
       }
@@ -556,7 +561,12 @@ struct luciole::ThumbnailService::State : std::enable_shared_from_this<State> {
   }
 };
 
-luciole::ThumbnailService::ThumbnailService() : m_state(std::make_shared<State>()) {}
+luciole::ThumbnailService::ThumbnailService()
+    : ThumbnailService([](const std::string& path) { return luciole::networkFilesystem(path); }) {}
+luciole::ThumbnailService::ThumbnailService(NetworkFilesystemCheck networkFilesystem)
+    : m_state(std::make_shared<State>()) {
+  m_state->networkFilesystem = std::move(networkFilesystem);
+}
 std::size_t luciole::ThumbnailService::decoders() {
   static const std::size_t count = std::clamp<std::size_t>(std::thread::hardware_concurrency() / 4, 2, 6);
   return count;

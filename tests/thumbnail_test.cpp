@@ -1298,6 +1298,22 @@ namespace {
     pump.drain();
     TEST_CHECK(!retiring->pixels);
   }
+  void testNetworkFilesystemPolicy(const Fixture& fixture) {
+    Pump pump;
+    const auto path = fixture.root / "network.png";
+    write(path, png(picture()));
+    const auto entry = source(path, pump);
+    luciole::ThumbnailService thumbnails([](const std::string&) { return true; });
+    auto local = thumbnails.request(entry, 48);
+    pump.until([&] { return local->ready; });
+    TEST_CHECK(!local->pixels);
+    auto options = luciole::ThumbnailOptions{};
+    options.policy = luciole::ThumbnailPolicy::All;
+    thumbnails.setOptions(options);
+    auto all = thumbnails.request(entry, 48);
+    pump.until([&] { return all->ready; });
+    TEST_CHECK(static_cast<bool>(all->pixels));
+  }
 } // namespace
 
 int main(int argc, char** argv) {
@@ -1331,6 +1347,7 @@ int main(int argc, char** argv) {
     testCacheLanesAndCancellation(fixture);
     testPublicationAndSourceChanges(fixture);
     testService(fixture);
+    testNetworkFilesystemPolicy(fixture);
     std::println("thumbnail checks passed");
     return 0;
   } catch (const std::exception& error) {
