@@ -213,6 +213,9 @@ void luciole::ViewPreferenceWriter::saveGridIconSize(int size) {
 void luciole::ViewPreferenceWriter::saveListIconSize(int size) {
   m_state->queue({{BrowserPreference::ListIconSize, size}});
 }
+void luciole::ViewPreferenceWriter::saveMillerIconSize(int size) {
+  m_state->queue({{BrowserPreference::MillerIconSize, size}});
+}
 void luciole::ViewPreferenceWriter::saveSidebarWidth(int width) {
   m_state->queue({{BrowserPreference::SidebarWidth, width}});
 }

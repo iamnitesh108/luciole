@@ -282,8 +282,10 @@ private:
   void applySort(luciole::SortOptions options);
   void changeSort(luciole::SortOptions options);
   void changeGridZoom(int requested);
-  void changeListIconSize(int size);
-  // The current view's step in its icon sizes; only Grid and List views zoom.
+  // List and Columns rows; 0 keeps the density's size.
+  int rowIconSize() const;
+  void changeRowIconSize(int size);
+  // The current view's step in its icon sizes.
   int zoomStep() const;
   void changeZoomStep(int requested);
   void resetZoom();
@@ -432,6 +434,7 @@ private:
   StatusBarController m_statusBar{*this, m_pins, m_settingsController, m_fileKeys};
   std::size_t m_gridZoom = 1;
   int m_listIconSize = 0;
+  int m_millerIconSize = 0;
   double m_zoomScroll = 0;
   luciole::ViewMode m_viewMode;
   luciole::WaylandTextClipboard& m_clipboard;

@@ -17,6 +17,7 @@ namespace luciole {
     void saveInteraction(ActivationMode activation, TypingMode typing);
     void saveGridIconSize(int size);
     void saveListIconSize(int size);
+    void saveMillerIconSize(int size);
     void saveSidebarWidth(int width);
     void saveShowSidebar(bool visible);
     void saveShowHidden(bool visible);

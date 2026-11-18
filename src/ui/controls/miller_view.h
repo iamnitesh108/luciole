@@ -34,6 +34,7 @@ public:
   std::function<void()> requestUpdate;
   TextInputClient* textInputClient = nullptr;
   luciole::BrowsePresentation presentation;
+  int iconSize = 0; // 0 keeps the density's size.
   luciole::ActivationMode activationMode = luciole::ActivationMode::DoubleClick;
 
 private:

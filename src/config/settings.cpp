@@ -216,6 +216,9 @@ namespace {
   }
   template <int Minimum, int Maximum> bool between(int value) { return value >= Minimum && value <= Maximum; }
   template <std::size_t Index> bool columnWidth(int value) { return luciole::validDetailsColumnWidth(Index, value); }
+  // List and Columns icon sizes; 0 keeps the density's size.
+  bool rowIconSize(int value) { return value == 0 || std::ranges::contains(luciole::kRowIconSizes, value); }
+  constexpr Rule<int> kRowIconSize{rowIconSize, "expected 0 or integer icon size 16, 20, 24, 28, 32, 40, 48, or 64"};
 
   using P = luciole::BrowserPreference;
   using S = BrowserSettings;
@@ -257,9 +260,10 @@ namespace {
            "expected integer icon size 32, 48, 64, 80, 96, 128, 160, 192, or 256"}
       ),
       describe(
-          P::ListIconSize, "list_icon_size", [](S& s) -> auto& { return s.listIconSize; },
-          {[](int value) { return value == 0 || std::ranges::contains(luciole::kListIconSizes, value); },
-           "expected 0 or integer icon size 16, 20, 24, 28, 32, 40, 48, or 64"}
+          P::ListIconSize, "list_icon_size", [](S& s) -> auto& { return s.listIconSize; }, kRowIconSize
+      ),
+      describe(
+          P::MillerIconSize, "miller_icon_size", [](S& s) -> auto& { return s.millerIconSize; }, kRowIconSize
       ),
       describe(P::Density, "density", [](S& s) -> auto& { return s.presentation.density; }, {kDensities}),
       describe(

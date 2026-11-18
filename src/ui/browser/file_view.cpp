@@ -414,7 +414,7 @@ void luciole::FileViewAdapter::bindTile(Node& tile, std::size_t index, bool, boo
       static_cast<FileRow&>(tile).bind(
           *entry, model.typeLabel(id), selected, ring, hovered, m_columns, m_columnOrder,
           m_cut && m_cut(entry->location()), m_pathEntry == id && !m_columnActive,
-          fileRowIconSize(m_presentation, m_listIconSize), m_presentation, readOnly,
+          fileRowIconSize(m_presentation, m_rowIconSize), m_presentation, readOnly,
           m_mode == ViewMode::List ? m_browser.treeRow(id) : TreeRowInfo{}
       );
     }
@@ -429,8 +429,7 @@ bool luciole::FileViewAdapter::onPointerPress(std::size_t index, float x, float,
   const auto id = m_browser.model().rows()[index];
   const auto tree = m_mode == ViewMode::List ? m_browser.treeRow(id) : TreeRowInfo{};
   const float startX = Style::rtl() ? width - x : x;
-  const float prefix =
-      treePrefixWidth(tree.depth, m_columns.nameWidth, fileRowIconSize(m_presentation, m_listIconSize));
+  const float prefix = treePrefixWidth(tree.depth, m_columns.nameWidth, fileRowIconSize(m_presentation, m_rowIconSize));
   if (tree.expandable
       && modifiers == 0
       && startX >= Style::spaceSm + prefix - 20.0F

@@ -109,6 +109,7 @@ BrowserPage::BrowserPage(
   );
   browser().setViewDefaults(settings.viewMode, settings.gridIconSize);
   m_listIconSize = settings.listIconSize;
+  m_millerIconSize = settings.millerIconSize;
   m_preview.setChangedCallback([this] {
     m_surface->requestLayout();
     if (m_popupSurface) {
@@ -377,6 +378,7 @@ luciole::BrowserSettings BrowserPage::options() const {
   value.viewMode = m_viewMode;
   value.gridIconSize = static_cast<int>(gridIconSize());
   value.listIconSize = m_listIconSize;
+  value.millerIconSize = m_millerIconSize;
   value.columns = m_detailsHeader.columnVisibility();
   value.columnOrder = m_detailsHeader.columnOrder();
   value.columnWidths = m_detailsHeader.columnWidths();
@@ -1814,6 +1816,10 @@ void BrowserPage::applySettings(const luciole::BrowserSettings& settings, bool f
     m_listIconSize = settings.listIconSize;
     m_zoomScroll = 0;
   }
+  if (m_settingsController.open() && (force || before.millerIconSize != settings.millerIconSize)) {
+    m_millerIconSize = settings.millerIconSize;
+    m_zoomScroll = 0;
+  }
   if (m_settingsController.open() && (force || before.sort != settings.sort)) {
     applySort(settings.sort);
   }
@@ -1953,8 +1959,7 @@ float BrowserPage::gridHeight() const {
   return m_viewMode == luciole::ViewMode::Grid
       ? luciole::gridMetrics(gridIconSize(), m_savedSettings.presentation, context).height
       : luciole::fileRowHeight(
-            m_savedSettings.presentation, context,
-            luciole::fileRowIconSize(m_savedSettings.presentation, m_listIconSize)
+            m_savedSettings.presentation, context, luciole::fileRowIconSize(m_savedSettings.presentation, rowIconSize())
         );
 }
 
@@ -1976,15 +1981,24 @@ void BrowserPage::changeGridZoom(int requested) {
   m_surface->requestUpdate();
 }
 
-void BrowserPage::changeListIconSize(int size) {
-  if (size == m_listIconSize) {
+int BrowserPage::rowIconSize() const {
+  return m_viewMode == luciole::ViewMode::Miller ? m_millerIconSize : m_listIconSize;
+}
+
+void BrowserPage::changeRowIconSize(int size) {
+  if (size == rowIconSize()) {
     return;
   }
   captureViewAnchor();
   m_listAdapter.onPointerCancel();
   m_gridAdapter.onPointerCancel();
-  m_listIconSize = size;
-  m_preferences.saveListIconSize(size);
+  if (m_viewMode == luciole::ViewMode::Miller) {
+    m_millerIconSize = size;
+    m_preferences.saveMillerIconSize(size);
+  } else {
+    m_listIconSize = size;
+    m_preferences.saveListIconSize(size);
+  }
   m_browserDirty = true;
   m_surface->requestUpdate();
 }
@@ -1993,8 +2007,8 @@ int BrowserPage::zoomStep() const {
   if (m_viewMode == luciole::ViewMode::Grid) {
     return static_cast<int>(m_gridZoom);
   }
-  const auto size = static_cast<int>(luciole::fileRowIconSize(m_savedSettings.presentation, m_listIconSize));
-  return static_cast<int>(std::ranges::find(luciole::kListIconSizes, size) - luciole::kListIconSizes.begin());
+  const auto size = static_cast<int>(luciole::fileRowIconSize(m_savedSettings.presentation, rowIconSize()));
+  return static_cast<int>(std::ranges::find(luciole::kRowIconSizes, size) - luciole::kRowIconSizes.begin());
 }
 
 void BrowserPage::changeZoomStep(int requested) {
@@ -2002,10 +2016,10 @@ void BrowserPage::changeZoomStep(int requested) {
     changeGridZoom(requested);
     return;
   }
-  const auto step = std::clamp(requested, 0, static_cast<int>(luciole::kListIconSizes.size()) - 1);
+  const auto step = std::clamp(requested, 0, static_cast<int>(luciole::kRowIconSizes.size()) - 1);
   // Staying on the density's size keeps the list on automatic sizing.
   if (step != zoomStep()) {
-    changeListIconSize(luciole::kListIconSizes[static_cast<std::size_t>(step)]);
+    changeRowIconSize(luciole::kRowIconSizes[static_cast<std::size_t>(step)]);
   }
 }
 
@@ -2018,11 +2032,11 @@ void BrowserPage::resetZoom() {
     );
     return;
   }
-  changeListIconSize(0);
+  changeRowIconSize(0);
 }
 
 bool BrowserPage::zoomFromKey(const KeyboardEvent& event) {
-  if ((m_viewMode != luciole::ViewMode::Grid && m_viewMode != luciole::ViewMode::List) || m_list == nullptr) {
+  if (m_list == nullptr) {
     return false;
   }
   int zoom = zoomStep();
@@ -2048,20 +2062,21 @@ bool BrowserPage::zoomFromKey(const KeyboardEvent& event) {
 }
 
 bool BrowserPage::zoomFromScroll(const PointerEvent& event) {
-  if ((m_viewMode != luciole::ViewMode::Grid && m_viewMode != luciole::ViewMode::List)
-      || m_list == nullptr
-      || !m_list->visible()
+  // Columns zoom from anywhere over the columns, not only the focused one.
+  Node* area = m_viewMode == luciole::ViewMode::Miller ? static_cast<Node*>(m_millerView) : m_list;
+  if (area == nullptr
+      || !area->visible()
       || m_connection.keyboardModifiers() != KeyMod::Ctrl
       || event.axis != WL_POINTER_AXIS_VERTICAL_SCROLL) {
     m_zoomScroll = 0;
     return false;
   }
   float localX = 0, localY = 0;
-  if (!Node::mapFromScene(m_list, static_cast<float>(event.sx), static_cast<float>(event.sy), localX, localY)
+  if (!Node::mapFromScene(area, static_cast<float>(event.sx), static_cast<float>(event.sy), localX, localY)
       || localX < 0
       || localY < 0
-      || localX >= m_list->width()
-      || localY >= m_list->height()) {
+      || localX >= area->width()
+      || localY >= area->height()) {
     return false;
   }
   const double steps = event.axisValue120 != 0 ? event.axisValue120 / 120.0
@@ -2109,7 +2124,7 @@ void BrowserPage::syncBrowser() {
   m_list->setCellHeight(gridHeight());
   m_list->setMinCellWidth(luciole::gridMetrics(gridIconSize(), m_savedSettings.presentation, false).minWidth);
   m_gridAdapter.setGridIconSize(gridIconSize());
-  m_listAdapter.setListIconSize(m_listIconSize);
+  m_listAdapter.setRowIconSize(m_listIconSize);
   for (auto* adapter : {&m_listAdapter, &m_gridAdapter}) {
     adapter->setPresentation(m_savedSettings.presentation, snapshot.metadata.filesystem.readOnly);
   }
@@ -2256,6 +2271,7 @@ void BrowserPage::prepareFrame(bool, bool layout) {
     UiPhaseScope phase(UiPhase::Layout);
     m_millerView->activationMode = m_activationMode;
     m_millerView->presentation = m_savedSettings.presentation;
+    m_millerView->iconSize = m_millerIconSize;
     m_millerView->synchronize();
     if (auto* grid = m_millerView->focusedView()) {
       m_list = grid;
