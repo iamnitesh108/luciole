@@ -80,7 +80,7 @@ namespace {
   // interrupt it. The link passes of every session share these workers, so hung targets hold at most this many of
   // GIO's pool threads.
   constexpr std::size_t kLinkWorkers = 2;
-  // Beyond this many waiting passes the oldest is dropped, and its links stay with the files.
+  // Beyond this many waiting passes the oldest is dropped, and its links keep the kind they were published with.
   constexpr std::size_t kMaxWaitingLinkPasses = 64;
   constexpr std::string_view kEntryLimitMessage = "Tree entry limit reached. Open this folder to see all items.";
 
@@ -916,9 +916,11 @@ struct luciole::DirectorySession::State : std::enable_shared_from_this<State> {
     auto links = std::make_shared<std::vector<std::pair<std::size_t, std::string>>>();
     const auto add = [&](std::size_t index, std::string_view name) {
       links->emplace_back(index, name);
-      if (directoryLinkNames.contains(name)) {
+      const bool known = directoryLinkNames.contains(name);
+      if (known) {
         scan->directoryLinks.insert(index);
       }
+      return known;
     };
     if (scan->catalogue) {
       for (std::size_t i = 0; i < scan->catalogue->items.size(); ++i) {
@@ -928,8 +930,9 @@ struct luciole::DirectorySession::State : std::enable_shared_from_this<State> {
       }
     } else {
       for (std::size_t i = 0; i < scan->entries.size(); ++i) {
-        if (scan->entries[i].symlink) {
-          add(i, scan->entries[i].name);
+        auto& entry = scan->entries[i];
+        if (entry.symlink) {
+          entry.linksToDirectory = add(i, entry.name);
         }
       }
     }
@@ -1273,7 +1276,8 @@ struct luciole::DirectorySession::State : std::enable_shared_from_this<State> {
     const auto replaced = snapshot.entries.size();
     snapshot.entries =
         scan->catalogue ? DirectoryEntries(std::move(*scan->catalogue)) : DirectoryEntries(std::move(scan->entries));
-    if (!scan->directoryLinks.empty()) {
+    // Native entries already carry the known link kinds; a catalogue keeps them in an overlay.
+    if (snapshot.entries.isCatalogue() && !scan->directoryLinks.empty()) {
       snapshot.entries = snapshot.entries.withDirectoryLinks(scan->directoryLinks);
     }
     unsniffed.clear();
