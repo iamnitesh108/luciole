@@ -44,6 +44,8 @@ namespace luciole {
       m_readOnly = readOnly;
     }
     void setGridIconSize(float size) { m_gridIconSize = size; }
+    // List rows only; 0 keeps the density's size.
+    void setListIconSize(int size) { m_listIconSize = size; }
     void setDetailsColumns(DetailsColumns columns) { m_columns = columns; }
     void setDetailsColumnOrder(DetailsColumnOrder order) { m_columnOrder = order; }
     void setColumnActive(bool active) { m_columnActive = active; }
@@ -76,6 +78,7 @@ namespace luciole {
     BrowsePresentation m_presentation;
     std::optional<bool> m_readOnly;
     float m_gridIconSize = 48.0F;
+    int m_listIconSize = 0;
     DetailsColumns m_columns;
     DetailsColumnOrder m_columnOrder = kDefaultDetailsColumnOrder;
     std::vector<EntryId> m_areaRows;

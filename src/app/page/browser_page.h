@@ -282,6 +282,11 @@ private:
   void applySort(luciole::SortOptions options);
   void changeSort(luciole::SortOptions options);
   void changeGridZoom(int requested);
+  void changeListIconSize(int size);
+  // The current view's step in its icon sizes; only Grid and List views zoom.
+  int zoomStep() const;
+  void changeZoomStep(int requested);
+  void resetZoom();
   bool zoomFromKey(const KeyboardEvent& event);
   bool zoomFromScroll(const PointerEvent& event);
   void toggleHidden();
@@ -426,6 +431,7 @@ private:
   FileKeyboardController m_fileKeys{*this, m_textInput, m_miller, m_menuController, m_locationBar, m_statusBar};
   StatusBarController m_statusBar{*this, m_pins, m_settingsController, m_fileKeys};
   std::size_t m_gridZoom = 1;
+  int m_listIconSize = 0;
   double m_zoomScroll = 0;
   luciole::ViewMode m_viewMode;
   luciole::WaylandTextClipboard& m_clipboard;

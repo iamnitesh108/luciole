@@ -108,6 +108,7 @@ BrowserPage::BrowserPage(
       std::ranges::find(luciole::kGridIconSizes, settings.gridIconSize) - luciole::kGridIconSizes.begin()
   );
   browser().setViewDefaults(settings.viewMode, settings.gridIconSize);
+  m_listIconSize = settings.listIconSize;
   m_preview.setChangedCallback([this] {
     m_surface->requestLayout();
     if (m_popupSurface) {
@@ -375,6 +376,7 @@ luciole::BrowserSettings BrowserPage::options() const {
   auto value = m_savedSettings;
   value.viewMode = m_viewMode;
   value.gridIconSize = static_cast<int>(gridIconSize());
+  value.listIconSize = m_listIconSize;
   value.columns = m_detailsHeader.columnVisibility();
   value.columnOrder = m_detailsHeader.columnOrder();
   value.columnWidths = m_detailsHeader.columnWidths();
@@ -1804,6 +1806,10 @@ void BrowserPage::applySettings(const luciole::BrowserSettings& settings, bool f
     m_zoomScroll = 0;
     browser().setDefaultIconSize(settings.gridIconSize);
   }
+  if (m_settingsController.open() && (force || before.listIconSize != settings.listIconSize)) {
+    m_listIconSize = settings.listIconSize;
+    m_zoomScroll = 0;
+  }
   if (m_settingsController.open() && (force || before.sort != settings.sort)) {
     applySort(settings.sort);
   }
@@ -1942,7 +1948,10 @@ float BrowserPage::gridHeight() const {
   const bool context = !browser().searchQuery().empty() || (location && location->isTrash());
   return m_viewMode == luciole::ViewMode::Grid
       ? luciole::gridMetrics(gridIconSize(), m_savedSettings.presentation, context).height
-      : luciole::fileRowHeight(m_savedSettings.presentation, context);
+      : luciole::fileRowHeight(
+            m_savedSettings.presentation, context,
+            luciole::fileRowIconSize(m_savedSettings.presentation, m_listIconSize)
+        );
 }
 
 float BrowserPage::gridIconSize() const { return static_cast<float>(luciole::kGridIconSizes[m_gridZoom]); }
@@ -1963,11 +1972,56 @@ void BrowserPage::changeGridZoom(int requested) {
   m_surface->requestUpdate();
 }
 
+void BrowserPage::changeListIconSize(int size) {
+  if (size == m_listIconSize) {
+    return;
+  }
+  captureViewAnchor();
+  m_listAdapter.onPointerCancel();
+  m_gridAdapter.onPointerCancel();
+  m_listIconSize = size;
+  m_preferences.saveListIconSize(size);
+  m_browserDirty = true;
+  m_surface->requestUpdate();
+}
+
+int BrowserPage::zoomStep() const {
+  if (m_viewMode == luciole::ViewMode::Grid) {
+    return static_cast<int>(m_gridZoom);
+  }
+  const auto size = static_cast<int>(luciole::fileRowIconSize(m_savedSettings.presentation, m_listIconSize));
+  return static_cast<int>(std::ranges::find(luciole::kListIconSizes, size) - luciole::kListIconSizes.begin());
+}
+
+void BrowserPage::changeZoomStep(int requested) {
+  if (m_viewMode == luciole::ViewMode::Grid) {
+    changeGridZoom(requested);
+    return;
+  }
+  const auto step = std::clamp(requested, 0, static_cast<int>(luciole::kListIconSizes.size()) - 1);
+  // Staying on the density's size keeps the list on automatic sizing.
+  if (step != zoomStep()) {
+    changeListIconSize(luciole::kListIconSizes[static_cast<std::size_t>(step)]);
+  }
+}
+
+void BrowserPage::resetZoom() {
+  if (m_viewMode == luciole::ViewMode::Grid) {
+    changeGridZoom(
+        static_cast<int>(
+            std::ranges::find(luciole::kGridIconSizes, luciole::kDefaultGridIconSize) - luciole::kGridIconSizes.begin()
+        )
+    );
+    return;
+  }
+  changeListIconSize(0);
+}
+
 bool BrowserPage::zoomFromKey(const KeyboardEvent& event) {
-  if (m_viewMode != luciole::ViewMode::Grid || m_list == nullptr) {
+  if ((m_viewMode != luciole::ViewMode::Grid && m_viewMode != luciole::ViewMode::List) || m_list == nullptr) {
     return false;
   }
-  int zoom = static_cast<int>(m_gridZoom);
+  int zoom = zoomStep();
   const bool ctrl = event.modifiers == KeyMod::Ctrl;
   const bool ctrlShift = event.modifiers == (KeyMod::Ctrl | KeyMod::Shift);
   if (!ctrl && !ctrlShift) {
@@ -1978,19 +2032,19 @@ bool BrowserPage::zoomFromKey(const KeyboardEvent& event) {
   } else if (ctrl && (event.sym == XKB_KEY_minus || event.sym == XKB_KEY_KP_Subtract)) {
     --zoom;
   } else if (ctrl && (event.sym == XKB_KEY_0 || event.sym == XKB_KEY_KP_0)) {
-    zoom = static_cast<int>(
-        std::ranges::find(luciole::kGridIconSizes, luciole::kDefaultGridIconSize) - luciole::kGridIconSizes.begin()
-    );
+    m_zoomScroll = 0;
+    resetZoom();
+    return true;
   } else {
     return false;
   }
   m_zoomScroll = 0;
-  changeGridZoom(zoom);
+  changeZoomStep(zoom);
   return true;
 }
 
 bool BrowserPage::zoomFromScroll(const PointerEvent& event) {
-  if (m_viewMode != luciole::ViewMode::Grid
+  if ((m_viewMode != luciole::ViewMode::Grid && m_viewMode != luciole::ViewMode::List)
       || m_list == nullptr
       || !m_list->visible()
       || m_connection.keyboardModifiers() != KeyMod::Ctrl
@@ -2016,7 +2070,7 @@ bool BrowserPage::zoomFromScroll(const PointerEvent& event) {
   m_zoomScroll = std::clamp(m_zoomScroll - steps, -limit, limit);
   const auto delta = static_cast<int>(m_zoomScroll);
   m_zoomScroll -= delta;
-  changeGridZoom(static_cast<int>(m_gridZoom) + delta);
+  changeZoomStep(zoomStep() + delta);
   return true;
 }
 
@@ -2051,6 +2105,7 @@ void BrowserPage::syncBrowser() {
   m_list->setCellHeight(gridHeight());
   m_list->setMinCellWidth(luciole::gridMetrics(gridIconSize(), m_savedSettings.presentation, false).minWidth);
   m_gridAdapter.setGridIconSize(gridIconSize());
+  m_listAdapter.setListIconSize(m_listIconSize);
   for (auto* adapter : {&m_listAdapter, &m_gridAdapter}) {
     adapter->setPresentation(m_savedSettings.presentation, snapshot.metadata.filesystem.readOnly);
   }

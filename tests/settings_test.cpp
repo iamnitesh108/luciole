@@ -555,6 +555,30 @@ namespace {
     );
   }
 
+  void testListIconSize() {
+    Fixture fixture;
+    using Preference = luciole::BrowserPreference;
+    fixture.write("config.toml", "");
+    const auto defaults = luciole::loadSettings(fixture.paths());
+    TEST_CHECK(defaults && defaults->browser.listIconSize == 0);
+    for (const int size : luciole::kListIconSizes) {
+      fixture.write("config.toml", "[browser]\nlist_icon_size = " + std::to_string(size) + "\n");
+      const auto loaded = luciole::loadSettings(fixture.paths());
+      TEST_CHECK(loaded && loaded->browser.listIconSize == size);
+    }
+    for (const auto* value : {"15", "21", "65", "-16", "24.0", "true", "'24'"}) {
+      fixture.write("config.toml", std::string("[browser]\nlist_icon_size = ") + value + "\n");
+      TEST_CHECK(!luciole::validateConfigFile(fixture.paths().base).empty());
+    }
+    fixture.write("config.toml", "");
+    luciole::ConfigService config(fixture.paths());
+    TEST_CHECK(config.reload());
+    const std::array zoom{luciole::OverrideEdit{Preference::ListIconSize, 48}};
+    TEST_CHECK(config.saveOverrides(zoom) == luciole::AtomicWriteState::Durable);
+    const auto saved = luciole::loadSettings(fixture.paths());
+    TEST_CHECK(saved && saved->browser.listIconSize == 48);
+  }
+
   void testSidebarWidth() {
     using Preference = luciole::BrowserPreference;
     using State = luciole::AtomicWriteState;
@@ -1187,6 +1211,7 @@ int main() {
     testEnvironmentPaths();
     testBrowserDefaults();
     testGridIconSize();
+    testListIconSize();
     testSidebarWidth();
     testSidebarVisibility();
     testAlwaysShowTabBar();

@@ -32,6 +32,7 @@ namespace luciole {
     double cornerRadiusScale = 1.0; // 0 (square) to 2; 1 is the default rounding.
     BrowsePresentation presentation;
     int gridIconSize = kDefaultGridIconSize;
+    int listIconSize = 0; // 0 keeps the density's list icon size.
     int sidebarWidth = kDefaultSidebarWidth;
     bool showSidebar = true;
     bool sidebarTree = false;
@@ -81,6 +82,7 @@ namespace luciole {
     DirectoriesFirst,
     ViewMode,
     GridIconSize,
+    ListIconSize,
     Density,
     FilenameTruncation,
     ShowSizeCaption,
@@ -160,6 +162,7 @@ namespace luciole {
     static constexpr PreferenceKey<bool> DirectoriesFirst{Id::DirectoriesFirst};
     static constexpr PreferenceKey<luciole::ViewMode> ViewMode{Id::ViewMode};
     static constexpr PreferenceKey<int> GridIconSize{Id::GridIconSize};
+    static constexpr PreferenceKey<int> ListIconSize{Id::ListIconSize};
     static constexpr PreferenceKey<luciole::ViewDensity> Density{Id::Density};
     static constexpr PreferenceKey<luciole::FilenameTruncation> FilenameTruncation{Id::FilenameTruncation};
     static constexpr PreferenceKey<bool> ShowSizeCaption{Id::ShowSizeCaption};

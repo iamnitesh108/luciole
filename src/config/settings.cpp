@@ -253,6 +253,11 @@ namespace {
           {[](int value) { return std::ranges::contains(luciole::kGridIconSizes, value); },
            "expected integer icon size 32, 48, 64, 80, 96, 128, 160, 192, or 256"}
       ),
+      describe(
+          P::ListIconSize, "list_icon_size", [](S& s) -> auto& { return s.listIconSize; },
+          {[](int value) { return value == 0 || std::ranges::contains(luciole::kListIconSizes, value); },
+           "expected 0 or integer icon size 16, 20, 24, 28, 32, 40, 48, or 64"}
+      ),
       describe(P::Density, "density", [](S& s) -> auto& { return s.presentation.density; }, {kDensities}),
       describe(
           P::FilenameTruncation, "filename_truncation", [](S& s) -> auto& { return s.presentation.filenameTruncation; },

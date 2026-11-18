@@ -101,7 +101,7 @@ namespace {
 
     void bind(
         const luciole::DirectoryEntry& entry, std::string_view typeLabel, bool selected, bool ring, bool hovered,
-        luciole::DetailsColumns columns, luciole::DetailsColumnOrder order, bool cut, bool path,
+        luciole::DetailsColumns columns, luciole::DetailsColumnOrder order, bool cut, bool path, float iconSize,
         luciole::BrowsePresentation presentation, bool readOnly, const luciole::TreeRowInfo& tree
     ) {
       m_tree = tree;
@@ -121,7 +121,7 @@ namespace {
       m_arrow->setParticipatesInLayout(m_miller && directory);
       m_arrow->setColor(colorSpecFromRole(path ? ColorRole::Primary : ColorRole::OnSurfaceVariant));
       m_icon->bindFile(entry, colorSpecFromRole(ColorRole::OnSurface));
-      m_iconSize = luciole::fileRowIconSize(presentation);
+      m_iconSize = iconSize;
       m_icon->setIconSize(m_iconSize);
       m_icon->setEmblems(presentation.showEmblems && entry.symlink, presentation.showEmblems && readOnly);
       m_name->setText(tree.status.empty() ? entry.displayName() : entry.displayName() + " · " + tree.status);
@@ -413,7 +413,8 @@ void luciole::FileViewAdapter::bindTile(Node& tile, std::size_t index, bool, boo
     } else {
       static_cast<FileRow&>(tile).bind(
           *entry, model.typeLabel(id), selected, ring, hovered, m_columns, m_columnOrder,
-          m_cut && m_cut(entry->location()), m_pathEntry == id && !m_columnActive, m_presentation, readOnly,
+          m_cut && m_cut(entry->location()), m_pathEntry == id && !m_columnActive,
+          fileRowIconSize(m_presentation, m_listIconSize), m_presentation, readOnly,
           m_mode == ViewMode::List ? m_browser.treeRow(id) : TreeRowInfo{}
       );
     }
@@ -428,7 +429,8 @@ bool luciole::FileViewAdapter::onPointerPress(std::size_t index, float x, float,
   const auto id = m_browser.model().rows()[index];
   const auto tree = m_mode == ViewMode::List ? m_browser.treeRow(id) : TreeRowInfo{};
   const float startX = Style::rtl() ? width - x : x;
-  const float prefix = treePrefixWidth(tree.depth, m_columns.nameWidth, fileRowIconSize(m_presentation));
+  const float prefix =
+      treePrefixWidth(tree.depth, m_columns.nameWidth, fileRowIconSize(m_presentation, m_listIconSize));
   if (tree.expandable
       && modifiers == 0
       && startX >= Style::spaceSm + prefix - 20.0F

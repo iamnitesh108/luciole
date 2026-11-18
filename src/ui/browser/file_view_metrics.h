@@ -30,10 +30,14 @@ namespace luciole {
         comfortable ? 8.0F : 2.0F
     };
   }
-  inline float fileRowHeight(BrowsePresentation presentation, bool context) {
-    return (presentation.density == ViewDensity::Comfortable ? 44.0F : 28.0F) + (context ? 16.0F : 0.0F);
-  }
   inline float fileRowIconSize(BrowsePresentation presentation) {
     return presentation.density == ViewDensity::Comfortable ? 28.0F : 20.0F;
+  }
+  // A listIconSize of 0 keeps the density's size.
+  inline float fileRowIconSize(BrowsePresentation presentation, int listIconSize) {
+    return listIconSize > 0 ? static_cast<float>(listIconSize) : fileRowIconSize(presentation);
+  }
+  inline float fileRowHeight(BrowsePresentation presentation, bool context, float iconSize) {
+    return iconSize + (presentation.density == ViewDensity::Comfortable ? 16.0F : 8.0F) + (context ? 16.0F : 0.0F);
   }
 } // namespace luciole
