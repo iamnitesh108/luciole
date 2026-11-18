@@ -9,12 +9,16 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <chrono>
+#include <condition_variable>
 #include <filesystem>
 #include <format>
 #include <fstream>
 #include <functional>
 #include <linux/magic.h>
+#include <memory>
+#include <mutex>
 #include <print>
 #include <stdexcept>
 #include <string>
@@ -90,6 +94,17 @@ namespace {
   bool hasEntry(const DirectorySession& session, const std::string& name) {
     return std::ranges::find(session.snapshot().entries, name, &luciole::DirectoryEntry::name)
         != session.snapshot().entries.end();
+  }
+
+  // Whether the published entry at name is a link known to lead to a folder.
+  bool linksToDirectory(const DirectorySession& session, std::string_view name) {
+    const auto& entries = session.snapshot().entries;
+    for (std::size_t i = 0; i < entries.size(); ++i) {
+      if (entries.brief(i).name == name) {
+        return entries.brief(i).linksToDirectory;
+      }
+    }
+    return false;
   }
 
   // Ready, with sniffed content types published.
@@ -667,7 +682,7 @@ namespace {
         compareWithGio(entry);
       }
       if (folder == fixture.path) {
-        TEST_CHECK(entry(session, "folder-link").linksToDirectory);
+        pump.until([&] { return linksToDirectory(session, "folder-link"); });
         TEST_CHECK(!entry(session, "link").linksToDirectory && !entry(session, "broken").linksToDirectory);
         TEST_CHECK(!entry(session, "locked").linksToDirectory);
       }
@@ -723,6 +738,7 @@ namespace {
     session.setCatalogueEnabled(true);
     session.open(fixture.location());
     ready(pump, session);
+    pump.until([&] { return linksToDirectory(session, "folder-link"); });
     const auto initial = session.snapshot().entries;
     TEST_CHECK(initial.isCatalogue() && initial.size() == 1407);
     const auto find = [&](const std::string& name) {
@@ -879,6 +895,67 @@ namespace {
     fs::permissions(fixture.path / "closed", fs::perms::owner_all);
   }
 
+  // Following a link can hang on an unresponsive mount without end. The listing publishes and cancels without
+  // waiting for it, links stay with the files until their targets are known, and hung checks hold only the shared
+  // link workers.
+  void testSlowLinkTarget(Pump& pump) {
+    Fixture fixture;
+    fs::create_directory(fixture.path / "folder");
+    fs::create_directory_symlink("folder", fixture.path / "folder-link");
+    fixture.write("file");
+    struct Gate {
+      std::mutex mutex;
+      std::condition_variable released;
+      bool open = false;
+      std::atomic<int> waiting = 0;
+    };
+    const auto gate = std::make_shared<Gate>();
+    const auto hanging = [gate](const std::string& path) {
+      ++gate->waiting;
+      std::unique_lock lock(gate->mutex);
+      gate->released.wait(lock, [&] { return gate->open; });
+      return luciole::linksToDirectory(path);
+    };
+    DirectorySession session(0, {}, hanging);
+    session.open(fixture.location());
+    ready(pump, session);
+    pump.until([&] { return gate->waiting == 1; });
+    TEST_CHECK(session.snapshot().status == DirectoryStatus::Ready && !linksToDirectory(session, "folder-link"));
+    session.cancel();
+    TEST_CHECK(session.snapshot().status == DirectoryStatus::Cancelled);
+    // The cancelled check still hangs; the next listing completes without it, and its own check takes the other
+    // link worker.
+    session.open(fixture.location());
+    ready(pump, session);
+    pump.until([&] { return gate->waiting == 2; });
+    TEST_CHECK(!linksToDirectory(session, "folder-link"));
+    // With every link worker hung, other folders still list, and their links wait for a free worker.
+    Fixture other;
+    fs::create_directory(other.path / "folder");
+    fs::create_directory_symlink("folder", other.path / "folder-link");
+    DirectorySession waiting;
+    waiting.open(other.location());
+    ready(pump, waiting);
+    TEST_CHECK(!linksToDirectory(waiting, "folder-link"));
+    {
+      const std::scoped_lock lock(gate->mutex);
+      gate->open = true;
+    }
+    gate->released.notify_all();
+    pump.until([&] { return linksToDirectory(session, "folder-link") && linksToDirectory(waiting, "folder-link"); });
+    TEST_CHECK(gate->waiting == 2);
+    // A rescan keeps the known target kind while it checks the link again, so the link does not jump to the files.
+    session.refresh();
+    TEST_CHECK(session.snapshot().status == DirectoryStatus::Loading);
+    ready(pump, session);
+    TEST_CHECK(linksToDirectory(session, "folder-link"));
+    fs::remove(fixture.path / "folder-link");
+    fs::create_symlink("file", fixture.path / "folder-link");
+    session.refresh();
+    ready(pump, session);
+    pump.until([&] { return !linksToDirectory(session, "folder-link"); });
+  }
+
   void testNetworkFilesystem() {
     const Fixture fixture;
     TEST_CHECK(!luciole::networkFilesystem(fixture.path.native()));
@@ -928,6 +1005,7 @@ int main() {
     testNativeMatchesGio(pump);
     testNativeUnsupportedFallsBack(pump);
     testNetworkFilesystem();
+    testSlowLinkTarget(pump);
     testDeferredSniffing(pump);
     testBrowseCatalogue(pump);
     testCatalogueContinuity();

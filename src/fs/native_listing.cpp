@@ -187,15 +187,6 @@ namespace {
     return guess ? guess.get() : "";
   }
 
-  // Folders first needs a link's target kind, which the NOFOLLOW listing never reports. A broken or unreadable
-  // link stays with the files.
-  bool linksToDirectory(int folder, const char* name, std::uint16_t mode) {
-    struct statx target{};
-    return S_ISLNK(mode)
-        && ::statx(folder, name, AT_NO_AUTOMOUNT, STATX_TYPE, &target) == 0
-        && S_ISDIR(target.stx_mode);
-  }
-
   GFileType gioFileType(std::uint16_t mode) {
     if (S_ISREG(mode)) {
       return G_FILE_TYPE_REGULAR;
@@ -349,7 +340,6 @@ luciole::listNativeFolder(const std::string& path, std::size_t entryLimit, GCanc
                   && info.stx_uid == 0
                   && info.stx_gid == 0),
           .symlink = S_ISLNK(info.stx_mode),
-          .linksToDirectory = linksToDirectory(fd, name, info.stx_mode),
       });
       browse.names.append(name, length);
       browse.names.push_back('\0');
@@ -379,7 +369,6 @@ luciole::listNativeFolder(const std::string& path, std::size_t entryLimit, GCanc
                 && info.stx_uid == 0
                 && info.stx_gid == 0),
         .symlink = S_ISLNK(mode),
-        .linksToDirectory = linksToDirectory(fd, name, mode),
         .size = info.stx_size <= G_MAXINT64 ? std::optional<std::uint64_t>(info.stx_size) : std::nullopt,
         .modifiedSeconds = static_cast<std::uint64_t>(info.stx_mtime.tv_sec),
         .access = {
@@ -523,4 +512,9 @@ std::optional<std::string> luciole::sniffContentType(const std::string& path) {
   ));
   const char* type = sniffed ? infoString(sniffed.get(), G_FILE_ATTRIBUTE_STANDARD_CONTENT_TYPE) : nullptr;
   return type != nullptr ? std::optional<std::string>(type) : std::nullopt;
+}
+
+bool luciole::linksToDirectory(const std::string& path) {
+  struct statx target{};
+  return ::statx(AT_FDCWD, path.c_str(), AT_NO_AUTOMOUNT, STATX_TYPE, &target) == 0 && S_ISDIR(target.stx_mode);
 }

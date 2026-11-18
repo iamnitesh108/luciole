@@ -47,7 +47,7 @@ bool luciole::DirectoryModel::applySnapshot(
     m_selectionAvailable = true;
   }
   if (snapshot.location == m_snapshot.location
-      && snapshot.entries.sameCatalogue(m_snapshot.entries)
+      && snapshot.entries.sameDirectoryLinks(m_snapshot.entries)
       && parents == m_treeParents
       && preserveRootOrder == m_preserveRootOrder
       && (m_sort.field == SortField::Name || m_sort.field == SortField::Location)) {

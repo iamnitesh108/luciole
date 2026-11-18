@@ -174,15 +174,8 @@ luciole::EntryBrief luciole::BrowseCatalogue::brief(std::size_t index) const {
   const auto& item = items[index];
   const auto name = std::string_view(names).substr(item.offset, item.length);
   const auto display = displayNames.find(index);
-  return {
-      item.id,
-      name,
-      display == displayNames.end() ? name : display->second,
-      item.type,
-      item.hidden,
-      item.symlink,
-      item.linksToDirectory
-  };
+  return {item.id,      name, display == displayNames.end() ? name : display->second, item.type, item.hidden,
+          item.symlink, false};
 }
 
 struct luciole::DirectoryEntries::Storage {
@@ -190,6 +183,8 @@ struct luciole::DirectoryEntries::Storage {
     std::vector<DirectoryEntry> entries;
     std::shared_ptr<const BrowseCatalogue> catalogue;
     std::unordered_map<std::size_t, DirectoryEntry> facts;
+    // Catalogue indices of the symlinks that lead to folders.
+    std::shared_ptr<const std::unordered_set<std::size_t>> directoryLinks;
     // Materializing a pending value never changes it. References live as long as this payload.
     mutable std::unordered_map<std::size_t, DirectoryEntry> pending;
     std::size_t size() const { return catalogue ? catalogue->items.size() : entries.size(); }
@@ -202,7 +197,9 @@ struct luciole::DirectoryEntries::Storage {
     }
     EntryBrief brief(std::size_t index) const {
       if (catalogue) {
-        return catalogue->brief(index);
+        auto brief = catalogue->brief(index);
+        brief.linksToDirectory = brief.symlink && directoryLinks && directoryLinks->contains(index);
+        return brief;
       }
       const auto& entry = entries[index];
       return {entry.id,     entry.name,    entry.displayName(),   entry.type,
@@ -328,6 +325,10 @@ bool luciole::DirectoryEntries::sameCatalogue(const DirectoryEntries& other) con
       && other.isCatalogue()
       && m_storage->blocks.front().payload->catalogue == other.m_storage->blocks.front().payload->catalogue;
 }
+bool luciole::DirectoryEntries::sameDirectoryLinks(const DirectoryEntries& other) const {
+  return sameCatalogue(other)
+      && m_storage->blocks.front().payload->directoryLinks == other.m_storage->blocks.front().payload->directoryLinks;
+}
 const luciole::BrowseCatalogue* luciole::DirectoryEntries::catalogue() const {
   return isCatalogue() ? m_storage->blocks.front().payload->catalogue.get() : nullptr;
 }
@@ -345,13 +346,17 @@ luciole::DirectoryEntries::withFacts(std::vector<std::pair<std::size_t, Director
   if (!isCatalogue()) {
     throw std::logic_error("facts require a flat catalogue");
   }
+  const auto& previous = *m_storage->blocks.front().payload;
   auto payload = std::make_shared<Storage::Payload>();
-  payload->catalogue = m_storage->blocks.front().payload->catalogue;
+  payload->catalogue = previous.catalogue;
+  payload->directoryLinks = previous.directoryLinks;
   // The session supplies the complete bounded working set, rather than retaining older revisions.
   for (auto& [index, entry] : facts) {
     if (index >= size() || entry.id != brief(index).id || entry.name != brief(index).name || entry.metadataPending) {
       throw std::logic_error("mismatched catalogue facts");
     }
+    // Detailed facts never follow links, so the target kind stays the catalogue's.
+    entry.linksToDirectory = brief(index).linksToDirectory;
     payload->facts.emplace(index, std::move(entry));
   }
   auto storage = std::make_shared<Storage>();
@@ -360,6 +365,34 @@ luciole::DirectoryEntries::withFacts(std::vector<std::pair<std::size_t, Director
   return DirectoryEntries(std::move(storage));
 }
 luciole::DirectoryEntries luciole::DirectoryEntries::withoutFacts() const { return withFacts({}); }
+luciole::DirectoryEntries
+luciole::DirectoryEntries::withDirectoryLinks(const std::unordered_set<std::size_t>& links) const {
+  if (empty()) {
+    return *this;
+  }
+  if (m_storage->projected || m_storage->blocks.size() != 1) {
+    throw std::logic_error("directory links require one unprojected listing");
+  }
+  const auto& previous = *m_storage->blocks.front().payload;
+  if (!previous.catalogue) {
+    auto entries = previous.entries;
+    for (std::size_t index = 0; index < entries.size(); ++index) {
+      entries[index].linksToDirectory = entries[index].symlink && links.contains(index);
+    }
+    return DirectoryEntries(std::move(entries));
+  }
+  auto payload = std::make_shared<Storage::Payload>();
+  payload->catalogue = previous.catalogue;
+  payload->facts = previous.facts;
+  payload->directoryLinks = std::make_shared<const std::unordered_set<std::size_t>>(links);
+  for (auto& [index, entry] : payload->facts) {
+    entry.linksToDirectory = entry.symlink && links.contains(index);
+  }
+  auto storage = std::make_shared<Storage>();
+  storage->size = size();
+  storage->blocks.push_back({std::move(payload), size()});
+  return DirectoryEntries(std::move(storage));
+}
 
 const luciole::DirectoryEntry& luciole::DirectoryEntries::operator[](std::size_t index) const {
   if (!m_storage->directRows.empty()) {
