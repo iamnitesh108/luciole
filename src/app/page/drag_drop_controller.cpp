@@ -393,6 +393,10 @@ std::optional<DragDropController::DropTarget> DragDropController::dropTarget() c
   if (!m_externalHover && (!m_drag || m_drag->sourcePin)) {
     return std::nullopt;
   }
+  if (m_sidebar.drawerContains(m_page.pointerX(), m_page.pointerY())
+      && (!m_sidebar.visible() || !m_sidebar.places().containsScenePoint(m_page.pointerX(), m_page.pointerY()))) {
+    return std::nullopt;
+  }
   if (const auto place =
           m_sidebar.visible() ? m_sidebar.places().dropFolderAt(m_page.pointerX(), m_page.pointerY()) : std::nullopt) {
     if (validDropFolder(place->location)) {
@@ -520,7 +524,7 @@ void DragDropController::startFileDrag(const std::vector<luciole::EntryId>& ids)
       m_dragArtwork = m_icons.request(
           luciole::iconSource(entry->icon),
           static_cast<int>(std::ceil(
-              (m_page.viewMode() == luciole::ViewMode::Grid ? m_page.gridIconSize() : 24)
+              (m_page.viewMode() == luciole::ViewMode::Grid ? m_page.gridIconSize() : m_page.rowIconSize())
               * m_page.surface().effectiveBufferScale()
           ))
       );
@@ -724,6 +728,8 @@ void DragDropController::layout(Renderer& renderer) {
   luciole::FileIconSource icon{.names = {"folder"}, .filePath = {}, .desktopFile = {}};
   if (m_drag->sourcePin == luciole::Location::trash()) {
     icon.names = {"user-trash"};
+  } else if (m_drag->sourcePin == luciole::Location::network()) {
+    icon.names = {"network-workgroup"};
   }
   if (!m_drag->entries.empty()) {
     if (const auto* entry = m_page.browser().model().entry(m_drag->entries.front().id)) {

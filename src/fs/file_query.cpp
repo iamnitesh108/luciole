@@ -4,8 +4,10 @@
 #include "fs/gio_interop.h"
 #include "fs/native_listing.h"
 
+#include <cerrno>
 #include <format>
 #include <memory>
+#include <sys/stat.h>
 #include <unordered_set>
 #include <utility>
 
@@ -173,6 +175,30 @@ void luciole::queryFileType(
     const Location& location, const CancelToken& token,
     std::move_only_function<void(std::expected<FileType, FileError>)> done
 ) {
+  if (const auto path = location.nativePath()) {
+    runJob<FileType>(
+        token,
+        [path = *path, token] {
+          if (token.cancelled()) {
+            throwFileError(FileErrorKind::Cancelled, "Cancelled");
+          }
+          struct stat info{};
+          if (::stat(path.c_str(), &info) < 0) {
+            const auto error = errnoError(errno);
+            throw FileErrorException({error.kind, "Cannot open symbolic link target: " + error.message});
+          }
+          return S_ISDIR(info.st_mode) ? FileType::Directory
+              : S_ISREG(info.st_mode)  ? FileType::Regular
+                                       : FileType::Special;
+        },
+        [token, done = std::move(done)](auto reply) mutable {
+          if (!token.cancelled()) {
+            done(std::move(reply));
+          }
+        }
+    );
+    return;
+  }
   using Done = std::move_only_function<void(std::expected<FileType, FileError>)>;
   const auto file = gioFile(location);
   g_file_query_info_async(
@@ -187,6 +213,13 @@ void luciole::queryFileType(
         }
         if (error) {
           (*done)(std::unexpected(fileError(*error)));
+        } else if (g_file_info_get_file_type(info.get()) == G_FILE_TYPE_SYMBOLIC_LINK) {
+          (*done)(std::unexpected(
+              FileError{
+                  FileErrorKind::Unavailable,
+                  "The symbolic link target is unavailable. It may be missing or contain a link loop."
+              }
+          ));
         } else {
           (*done)(fileType(g_file_info_get_file_type(info.get())));
         }

@@ -20,19 +20,21 @@ struct luciole::MountInteraction::State : std::enable_shared_from_this<State> {
   std::function<void()> changed;
   std::string problem;
   bool cancelled = false;
+  MountPurpose purpose = MountPurpose::Network;
   void notify() const {
     if (const auto callback = changed) {
       callback();
     }
   }
   void unsupported() {
-    problem = "The server requested an unsupported authentication method.";
+    problem = "The provider requested an unsupported authentication method.";
     prompt.reset();
     g_mount_operation_reply(operation.get(), G_MOUNT_OPERATION_ABORTED);
     notify();
   }
 };
-luciole::MountInteraction::MountInteraction() : m_state(std::make_shared<State>()) {
+luciole::MountInteraction::MountInteraction(MountPurpose purpose) : m_state(std::make_shared<State>()) {
+  m_state->purpose = purpose;
   g_signal_connect(
       m_state->operation.get(), "ask-password",
       G_CALLBACK((+[](GMountOperation* operation, const char* message, const char* user, const char* domain,
@@ -48,7 +50,8 @@ luciole::MountInteraction::MountInteraction() : m_state(std::make_shared<State>(
           state->unsupported();
           return;
         }
-        state->prompt = MountPrompt{++nextPrompt, text(message), text(user), text(domain), flags, {}, true};
+        state->prompt =
+            MountPrompt{++nextPrompt, text(message), text(user), text(domain), flags, {}, true, state->purpose};
         state->notify();
       })),
       m_state.get()
@@ -58,7 +61,7 @@ luciole::MountInteraction::MountInteraction() : m_state(std::make_shared<State>(
       G_CALLBACK((+[](GMountOperation* operation, const char* message, const char* const* choices, gpointer data) {
         g_signal_stop_emission_by_name(operation, "ask-question");
         const auto state = static_cast<State*>(data)->shared_from_this();
-        MountPrompt prompt{++nextPrompt, text(message), {}, {}, {}, {}, false};
+        MountPrompt prompt{++nextPrompt, text(message), {}, {}, {}, {}, false, state->purpose};
         for (std::size_t i = 0; choices && choices[i]; ++i) {
           if (i == 16) {
             state->unsupported();

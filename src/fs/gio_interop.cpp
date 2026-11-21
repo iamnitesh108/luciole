@@ -1,5 +1,7 @@
 #include "fs/gio_interop.h"
 
+#include <format>
+
 luciole::FileError luciole::fileError(const GError& error) {
   using Kind = FileErrorKind;
   auto kind = Kind::Other;
@@ -60,6 +62,28 @@ luciole::FileError luciole::fileError(const GError& error) {
     }
   }
   return {.kind = kind, .message = error.message};
+}
+
+luciole::FileError luciole::directoryOpenError(const Location& location, FileError error) {
+  if (error.kind != FileErrorKind::Unsupported || location.isNative() || location.isTrash()) {
+    return error;
+  }
+  const GString scheme(g_uri_parse_scheme(location.uri().c_str()));
+  if (!scheme) {
+    return error;
+  }
+  const auto* schemes = g_vfs_get_supported_uri_schemes(g_vfs_get_default());
+  for (const auto* current = schemes; current && *current; ++current) {
+    if (g_ascii_strcasecmp(*current, scheme.get()) == 0) {
+      return error;
+    }
+  }
+  error.message = std::format(
+      "Desktop support for {}:// is unavailable. Install or enable its GIO/GVfs backend and session services, then "
+      "restart Luciole.",
+      scheme.get()
+  );
+  return error;
 }
 
 luciole::FileType luciole::fileType(GFileType type) {

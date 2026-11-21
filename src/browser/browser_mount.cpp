@@ -1,4 +1,30 @@
 #include "browser/browser_controller.h"
+#include "fs/drive_monitor.h"
+
+void luciole::BrowserController::openDrive(
+    DriveMonitor& drives, const std::string& key, std::function<void(std::string)> done
+) {
+  if (!m_mount) {
+    m_mount = std::make_unique<LocationMount>();
+    m_mount->setChangedCallback([this] { notify(); });
+  }
+  drives.mount(
+      key, *m_mount,
+      [this, weak = std::weak_ptr(m_lifetime), context = m_contextSerial,
+       done = std::move(done)](std::expected<Location, FileError> result) {
+        if (weak.expired() || context != m_contextSerial) {
+          return;
+        }
+        if (result) {
+          open(*result);
+          done({});
+        } else {
+          notify();
+          done(result.error().kind == FileErrorKind::Cancelled ? std::string{} : result.error().message);
+        }
+      }
+  );
+}
 
 void luciole::BrowserController::sessionChanged() {
   if (m_switchingSources) {

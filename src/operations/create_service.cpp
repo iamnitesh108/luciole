@@ -45,6 +45,7 @@ namespace {
     std::string path;
     luciole::Fd directory;
     std::unique_ptr<TemplateSource> source;
+    std::optional<std::string> image;
     explicit Target(std::string path)
         : path(std::move(path)),
           directory(luciole::checkedFd(::open(this->path.c_str(), O_RDONLY | O_DIRECTORY | O_CLOEXEC))) {}
@@ -218,6 +219,9 @@ bool luciole::CreateService::prepare(const Location& parent, CreateKind kind) {
 bool luciole::CreateService::prepareTemplate(const Location& parent, DocumentTemplate source) {
   return prepareTarget(parent, CreateKind::Document, std::move(source));
 }
+bool luciole::CreateService::prepareImage(const Location& parent, std::string bytes) {
+  return prepareTarget(parent, CreateKind::Image, std::nullopt, std::move(bytes));
+}
 bool luciole::CreateService::prepareLink(const DirectoryEntry& source) {
   if (busy()
       || !source.location().nativePath()
@@ -304,7 +308,7 @@ bool luciole::CreateService::createLink(const Location& parent, std::string name
   return true;
 }
 bool luciole::CreateService::prepareTarget(
-    const Location& parent, CreateKind kind, std::optional<DocumentTemplate> source
+    const Location& parent, CreateKind kind, std::optional<DocumentTemplate> source, std::optional<std::string> image
 ) {
   if (busy()) {
     return false;
@@ -319,7 +323,7 @@ bool luciole::CreateService::prepareTarget(
       .error = {},
       .receipt = {}
   };
-  State::launch(m_state, [parent, source = std::move(source)](const CancelToken&) mutable {
+  State::launch(m_state, [parent, source = std::move(source), image = std::move(image)](const CancelToken&) mutable {
     const auto path = parent.nativePath();
     if (!path) {
       throwFileError(FileErrorKind::Unsupported, "Creating remote files or folders is not supported yet.");
@@ -328,6 +332,7 @@ bool luciole::CreateService::prepareTarget(
     if (source) {
       target->source = std::make_unique<TemplateSource>(std::move(*source));
     }
+    target->image = std::move(image);
     return Reply{
         .target = std::move(target), .destination = std::nullopt, .error = {}, .linkSource = {}, .receipt = {}
     };
@@ -385,6 +390,8 @@ bool luciole::CreateService::create(std::string name) {
           source.requireCurrent();
           copyCreationData(source.file.get(), stage.item(), source.source.revision.size, token);
           source.requireCurrent();
+        } else if (kind == CreateKind::Image) {
+          writeCreationData(*target->image, stage.item(), token);
         }
         return publish(stage, *target, name, kind, token);
       }

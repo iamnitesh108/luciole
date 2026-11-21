@@ -256,6 +256,38 @@ namespace {
     fs::remove_all(root);
     drainHistory();
   }
+  // A replacing move whose source removal fails keeps the displaced destination instead of deleting it.
+  void moveSourceRemovalFailure(const fs::path& root) {
+    if (geteuid() == 0) {
+      return;
+    }
+    fs::create_directories(root / "source");
+    fs::create_directories(root / "destination");
+    write(root / "source/item", "incoming");
+    write(root / "destination/item", "previous");
+    fs::permissions(root / "source", fs::perms::owner_read | fs::perms::owner_exec);
+    ProviderTransfer provider(
+        {{Location::fromPath((root / "source/item").native())},
+         Location::fromPath((root / "destination").native()),
+         TransferAction::Move}
+    );
+    std::atomic<std::uint64_t> bytes{0};
+    std::atomic<std::size_t> completed{0};
+    const auto results =
+        provider.run({}, bytes, completed, [](const auto&) { return TransferConflictChoice::Replace; });
+    fs::permissions(root / "source", fs::perms::owner_all);
+    TEST_CHECK(results.front().outcome == Partial && read(root / "destination/item") == "incoming");
+    TEST_CHECK(read(root / "source/item") == "incoming");
+    bool retained = false;
+    for (const auto& item : fs::directory_iterator(root / "destination")) {
+      if (item.path().filename().native().starts_with(".luciole-transfer-")) {
+        retained = read(item.path() / "previous") == "previous";
+        TEST_CHECK(results.front().error->message.contains(item.path().filename().native()));
+      }
+    }
+    TEST_CHECK(retained);
+    fs::remove_all(root);
+  }
 
   void downloadHistory(const fs::path& root, const Location& remote, const fs::path& backend) {
     fs::create_directories(root / "destination");
@@ -732,6 +764,7 @@ int main(int argc, char** argv) {
     run(root, Location::fromPath((root / "remote").native()), root / "remote", false);
     downloadHistory(root / "history", Location::fromPath((root / "remote-history").native()), root / "remote-history");
     downloadFailureProofs(root / "history-failures");
+    moveSourceRemovalFailure(root / "move-removal-failure");
     for (const auto* uri : {"trash:///file", "https://example.invalid/a", "sftp://user:secret@example.invalid/a"}) {
       TEST_CHECK(!transferLocationSupported(Location::fromUri(uri)));
     }

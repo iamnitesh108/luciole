@@ -46,6 +46,11 @@ namespace {
     return result;
   }
 
+  luciole::SharedFileIcon contentTypeIcon(const char* contentType, GFileType type) {
+    const luciole::GioPtr<GIcon> icon(g_content_type_get_icon(contentType));
+    return std::make_shared<const luciole::FileIconSource>(fileIcon(icon.get(), type, nullptr, {}));
+  }
+
   bool desktopEntry(GFileType type, const char* name) {
     return type == G_FILE_TYPE_REGULAR && name != nullptr && std::string_view(name).ends_with(".desktop");
   }
@@ -60,6 +65,16 @@ luciole::FileIconSource luciole::readFileIcon(GFileInfo* info, const Location& l
 const luciole::FileIconSource& luciole::emptyFileIcon() {
   static const FileIconSource empty;
   return empty;
+}
+
+const luciole::SharedFileIcon& luciole::localLinkIcon() {
+  static const auto icon = contentTypeIcon("inode/symlink", G_FILE_TYPE_SYMBOLIC_LINK);
+  return icon;
+}
+
+const luciole::SharedFileIcon& luciole::localFolderIcon() {
+  static const auto icon = contentTypeIcon("inode/directory", G_FILE_TYPE_DIRECTORY);
+  return icon;
 }
 
 luciole::SharedFileIcon luciole::FileIconPool::get(GFileInfo* info, const Location& folder) {

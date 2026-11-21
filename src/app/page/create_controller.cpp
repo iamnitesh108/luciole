@@ -7,6 +7,7 @@
 #include "browser/action_registry.h"
 #include "browser/browser_controller.h"
 #include "browser/location_presentation.h"
+#include "clipboard/text_clipboard.h"
 #include "core/ui_phase.h"
 #include "fs/filename.h"
 #include "platform/desktop_integration.h"
@@ -105,9 +106,9 @@ void CreateController::openCreateItem(
   const auto display = source ? luciole::filenameDisplayText(source->name) : std::string{};
   auto editor = std::make_unique<NameDialog>(
       m_page.dialogWidth(DialogWidth::Small),
-      kind == luciole::CreateKind::Folder ? "New folder"
-          : document                      ? "New document"
-                                          : "New file",
+      kind == luciole::CreateKind::Folder ? "New Folder"
+          : document                      ? "New Document"
+                                          : "New File",
       kind == luciole::CreateKind::Folder ? "folder-plus" : "file-plus",
       source                                    ? display
           : kind == luciole::CreateKind::Folder ? "New Folder"
@@ -128,6 +129,32 @@ void CreateController::openCreateItem(
     auto& creator = m_job->service<luciole::CreateService>();
     if (!(source ? creator.prepareTemplate(*m_createParent, std::move(*source))
                  : creator.prepare(*m_createParent, kind))) {
+      control->showError("Another creation is still finishing.");
+    }
+  }
+}
+
+void CreateController::openImagePaste(luciole::ClipboardImage image, luciole::Location parent) {
+  if (!canCreateItem() || m_page.browser().model().snapshot().location != parent) {
+    m_page.actionError("Open an available writable folder to paste an image.");
+    return;
+  }
+  auto editor = std::make_unique<NameDialog>(
+      m_page.dialogWidth(DialogWidth::Small), "Paste Image", "photo", "Pasted image." + image.extension, "",
+      luciole::filenameProblem, [this](std::string name) { submitCreateItem(std::move(name)); },
+      [this] { m_page.dismissPopup(); }, "Save", "Saving…"
+  );
+  auto* control = editor.get();
+  m_page.showDialog(std::move(editor), DialogWidth::Small);
+  if (m_page.popupSurface() != nullptr) {
+    m_page.activePopup().bind(ActivePopup::Kind::CreateItem, [this] { closeCreation(); });
+    m_createEditor = control;
+    m_createParent = std::move(parent);
+    m_creationPreparing = true;
+    control->setSaving(true);
+    m_job = m_page.jobs().create<luciole::CreateService>(JobScope::Page);
+    auto& creator = m_job->service<luciole::CreateService>();
+    if (!creator.prepareImage(*m_createParent, std::move(image.bytes))) {
       control->showError("Another creation is still finishing.");
     }
   }
@@ -286,7 +313,7 @@ void CreateController::sync(const OperationJob& job) {
     createEditor->showError(createErrorText(snapshot.error));
     if (std::exchange(m_creationPreparing, false)) {
       m_page.popupDispatcher().setFocus(createEditor->input()->inputArea());
-      if (snapshot.kind == luciole::CreateKind::Document) {
+      if (snapshot.kind == luciole::CreateKind::Document || snapshot.kind == luciole::CreateKind::Image) {
         const auto& value = createEditor->input()->value();
         createEditor->input()->selectRange(0, luciole::filenameStemLength(value, false));
       } else {

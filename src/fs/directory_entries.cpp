@@ -58,6 +58,17 @@ const luciole::Location* luciole::DirectoryEntry::shortcutTarget() const {
 bool luciole::DirectoryEntry::isFolderLink() const {
   return type == FileType::Directory || (type == FileType::Shortcut && shortcutTarget() != nullptr);
 }
+void luciole::DirectoryEntry::setLinksToDirectory(bool leadsToFolder) {
+  linksToDirectory = symlink && leadsToFolder;
+  if (!symlink) {
+    return;
+  }
+  const auto& shown = linksToDirectory ? localFolderIcon() : localLinkIcon();
+  const auto& replaced = linksToDirectory ? localLinkIcon() : localFolderIcon();
+  if (sameIcon(icon, replaced)) {
+    icon = shown;
+  }
+}
 luciole::Location luciole::DirectoryEntry::navigationLocation() const {
   const auto* target = type == FileType::Shortcut ? shortcutTarget() : nullptr;
   return target ? *target : location();
@@ -220,7 +231,7 @@ struct luciole::DirectoryEntries::Storage {
         entry.type = item.type;
         entry.hidden = item.hidden;
         entry.symlink = item.symlink;
-        entry.linksToDirectory = item.linksToDirectory;
+        entry.setLinksToDirectory(item.linksToDirectory);
         entry.metadataPending = true;
         entry.queriedDetails = 0;
       }
@@ -356,7 +367,7 @@ luciole::DirectoryEntries::withFacts(std::vector<std::pair<std::size_t, Director
       throw std::logic_error("mismatched catalogue facts");
     }
     // Detailed facts never follow links, so the target kind stays the catalogue's.
-    entry.linksToDirectory = brief(index).linksToDirectory;
+    entry.setLinksToDirectory(brief(index).linksToDirectory);
     payload->facts.emplace(index, std::move(entry));
   }
   auto storage = std::make_shared<Storage>();
@@ -377,7 +388,7 @@ luciole::DirectoryEntries::withDirectoryLinks(const std::unordered_set<std::size
   if (!previous.catalogue) {
     auto entries = previous.entries;
     for (std::size_t index = 0; index < entries.size(); ++index) {
-      entries[index].linksToDirectory = entries[index].symlink && links.contains(index);
+      entries[index].setLinksToDirectory(links.contains(index));
     }
     return DirectoryEntries(std::move(entries));
   }
@@ -386,7 +397,7 @@ luciole::DirectoryEntries::withDirectoryLinks(const std::unordered_set<std::size
   payload->facts = previous.facts;
   payload->directoryLinks = std::make_shared<const std::unordered_set<std::size_t>>(links);
   for (auto& [index, entry] : payload->facts) {
-    entry.linksToDirectory = entry.symlink && links.contains(index);
+    entry.setLinksToDirectory(links.contains(index));
   }
   auto storage = std::make_shared<Storage>();
   storage->size = size();

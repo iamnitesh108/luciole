@@ -12,7 +12,7 @@
 
 namespace luciole {
   class CreateReceipt;
-  enum class CreateKind { Folder, EmptyFile, Document, SymbolicLink, HardLink };
+  enum class CreateKind { Folder, EmptyFile, Document, Image, SymbolicLink, HardLink };
   enum class CreateStatus { Idle, Preparing, Ready, Creating, Succeeded, Partial, Error, Cancelled };
   struct CreateSnapshot {
     CreateStatus status = CreateStatus::Idle;
@@ -33,6 +33,8 @@ namespace luciole {
     CreateService& operator=(const CreateService&) = delete;
     bool prepare(const Location& parent, CreateKind kind);
     bool prepareTemplate(const Location& parent, DocumentTemplate source);
+    // Prepares a file holding `bytes`, such as a pasted clipboard image.
+    bool prepareImage(const Location& parent, std::string bytes);
     bool prepareLink(const DirectoryEntry& source);
     bool createLink(const Location& parent, std::string name, CreateKind kind);
     bool create(std::string name);
@@ -46,7 +48,10 @@ namespace luciole {
     void setChangedCallback(std::function<void()> callback);
 
   private:
-    bool prepareTarget(const Location& parent, CreateKind kind, std::optional<DocumentTemplate> source);
+    bool prepareTarget(
+        const Location& parent, CreateKind kind, std::optional<DocumentTemplate> source,
+        std::optional<std::string> image = std::nullopt
+    );
     struct State;
     std::shared_ptr<State> m_state;
   };

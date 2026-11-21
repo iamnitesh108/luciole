@@ -48,16 +48,14 @@ namespace {
         && leaf.ends_with(".png")
         && leaf.substr(0, 32).find_first_not_of("0123456789abcdef") == std::string::npos;
   }
+  // A damaged ledger must not block caching forever: unreadable entries are dropped and rewritten.
   nlohmann::json readIndex(const std::optional<std::string>& text) {
-    if (!text) {
+    auto index = text ? nlohmann::json::parse(*text, nullptr, false) : nlohmann::json::array();
+    if (!index.is_array()) {
       return nlohmann::json::array();
     }
-    auto index = nlohmann::json::parse(*text);
-    if (!index.is_array()) {
-      throw std::runtime_error("invalid thumbnail index");
-    }
-    for (const auto& item : index) {
-      if (!item.is_object()
+    std::erase_if(index.get_ref<nlohmann::json::array_t&>(), [](const nlohmann::json& item) {
+      return !item.is_object()
           || !item.contains("name")
           || !item["name"].is_string()
           || !safeName(item["name"].get<std::string>())
@@ -65,10 +63,8 @@ namespace {
           || !item["bytes"].is_number_unsigned()
           || item["bytes"].get<std::uint64_t>() > 8U * 1024U * 1024U
           || !item.contains("identity")
-          || !item["identity"].is_string()) {
-        throw std::runtime_error("invalid thumbnail index entry");
-      }
-    }
+          || !item["identity"].is_string();
+    });
     return index;
   }
   void removeOwned(const std::filesystem::path& root, const std::string& name, const std::string& identity) {

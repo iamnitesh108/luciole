@@ -271,6 +271,9 @@ namespace {
     wait([&] { return !service.busy(); });
     TEST_CHECK(!value(service.fields(), "Permissions").empty());
     TEST_CHECK(value(service.fields(), "Pixel size").empty());
+    TEST_CHECK(value(service.fields(), "Link Target") == "missing.png");
+    TEST_CHECK(!value(service.fields(), "Target Status").empty());
+    TEST_CHECK(value(service.fields(), "Resolved Target").empty());
     const auto fifo = root / "fifo.png";
     TEST_CHECK(::mkfifo(fifo.c_str(), 0600) == 0);
     source = entry(fifo, "image/png");
@@ -279,6 +282,50 @@ namespace {
     wait([&] { return !service.busy(); });
     TEST_CHECK(value(service.fields(), "Permissions") == "0600");
     TEST_CHECK(value(service.fields(), "Pixel size").empty());
+  }
+  void symbolicLinkChecks(const fs::path& root) {
+    const auto folder = root / "link-facts";
+    fs::create_directories(folder / "actual" / "nested");
+    const auto target = folder / "actual" / "document <literal> café.txt";
+    std::ofstream(target) << "target contents";
+    fs::create_directory_symlink("actual/nested", folder / "alias");
+    const auto link = folder / "relative-link";
+    fs::create_symlink("alias/../document <literal> café.txt", link);
+    fs::create_symlink(link, folder / "chain");
+    fs::create_symlink("actual", folder / "folder-link");
+    fs::create_symlink("loop-b", folder / "loop-a");
+    fs::create_symlink("loop-a", folder / "loop-b");
+    for (const auto& name : {"relative-link", "chain", "folder-link", "loop-a"}) {
+      auto source = entry(folder / name, "inode/symlink");
+      source.type = luciole::FileType::Symlink;
+      source.symlink = true;
+      luciole::PreviewMetadataService service;
+      service.show(source, {});
+      wait([&] { return !service.busy(); });
+      const auto& fields = service.fields();
+      TEST_CHECK(!value(fields, "Link Target").empty());
+      TEST_CHECK(!value(fields, "Permissions").empty());
+      TEST_CHECK(value(fields, "Pixel size").empty());
+      if (std::string_view(name) == "loop-a") {
+        TEST_CHECK(value(fields, "Resolved Target").empty());
+        TEST_CHECK(!value(fields, "Target Status").empty());
+      } else {
+        const auto resolved = std::string_view(name) == "folder-link" ? folder / "actual" : target;
+        TEST_CHECK(value(fields, "Resolved Target") == resolved.native());
+        TEST_CHECK(value(fields, "Target Status").empty());
+      }
+      if (std::string_view(name) == "relative-link") {
+        TEST_CHECK(value(fields, "Link Target") == "alias/../document <literal> café.txt");
+        const luciole::GioPtr<GCancellable> cancel(g_cancellable_new());
+        fs::remove(link);
+        fs::create_symlink("missing", link);
+        TEST_CHECK(luciole::probePreviewMetadata(source, {}, cancel.get()).empty());
+        fs::remove(link);
+        fs::create_symlink("alias/../document <literal> café.txt", link);
+        g_cancellable_cancel(cancel.get());
+        TEST_CHECK(luciole::probePreviewMetadata(source, {}, cancel.get()).empty());
+      }
+    }
   }
   void mediaChecks(const fs::path& root) {
     const auto clip = root / "clip café\n.mp4";
@@ -433,6 +480,7 @@ int main(int argc, char** argv) {
   imageChecks(root);
   launcherChecks(root);
   nativeFactsChecks(root);
+  symbolicLinkChecks(root);
   mediaChecks(root);
   lifecycleChecks(root);
   fs::remove_all(root);

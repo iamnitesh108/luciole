@@ -18,6 +18,9 @@ namespace luciole {
   using SharedFileIcon = std::shared_ptr<const FileIconSource>;
 
   const FileIconSource& emptyFileIcon();
+  // What a local listing shows for a link, which it never follows, and for a plain folder.
+  const SharedFileIcon& localLinkIcon();
+  const SharedFileIcon& localFolderIcon();
   inline const FileIconSource& iconSource(const SharedFileIcon& icon) { return icon ? *icon : emptyFileIcon(); }
   // Pointer equality first; entries of one listing share their icons.
   inline bool sameIcon(const SharedFileIcon& a, const SharedFileIcon& b) {

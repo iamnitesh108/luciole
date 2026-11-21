@@ -69,22 +69,88 @@ namespace {
     }
     return result + '"';
   }
+  // WezTerm's config options belong before its subcommand. An explicit remote
+  // or management subcommand must not be silently turned into a local start.
+  bool weztermStart(std::vector<std::string>& args) {
+    std::size_t index = 1;
+    while (index < args.size()) {
+      const auto& arg = args[index];
+      if (arg == "--config-file" || arg == "--config") {
+        index += 2;
+      } else if (
+          arg == "-n" || arg == "--skip-config" || arg.starts_with("--config-file=") || arg.starts_with("--config=")
+      ) {
+        ++index;
+      } else {
+        return arg == "start" || arg == "-e" || (arg == "cli" && index + 1 < args.size() && args[index + 1] == "spawn");
+      }
+    }
+    args.emplace_back("start");
+    return true;
+  }
+  void directoryArgument(std::vector<std::string>& args, const std::string& option, const std::string& directory) {
+    // A requested folder overrides a configured default. Avoid duplicate
+    // options, which some terminals reject instead of accepting the last one.
+    for (std::size_t index = 1; index < args.size();) {
+      if (args[index] == option) {
+        args.erase(
+            args.begin() + static_cast<std::ptrdiff_t>(index),
+            args.begin() + static_cast<std::ptrdiff_t>(std::min(index + 2, args.size()))
+        );
+      } else if (args[index].starts_with(option + '=')) {
+        args.erase(args.begin() + static_cast<std::ptrdiff_t>(index));
+      } else {
+        ++index;
+      }
+    }
+    args.push_back(option + '=' + directory);
+  }
 } // namespace
 
 std::vector<std::string>
 luciole::terminalArguments(const std::string& configured, bool execute, const std::string& directory) {
   auto result = select(configured);
   const auto name = std::filesystem::path(result.front()).filename().string();
-  if (name == "xdg-terminal-exec" && !directory.empty()) {
-    result.push_back("--dir=" + directory);
+  std::string separator;
+  if (result.back() == "--" || result.back() == "-x" || (result.back() == "-e" && name != "wezterm")) {
+    separator = std::move(result.back());
+    result.pop_back();
   }
-  if (!execute || result.back() == "--" || result.back() == "-e" || result.back() == "-x") {
+  const bool wezterm = name == "wezterm" && weztermStart(result);
+  if (!directory.empty()) {
+    if (name == "xdg-terminal-exec") {
+      directoryArgument(result, "--dir", directory);
+    } else if (wezterm || name == "kitty") {
+      directoryArgument(result, wezterm ? "--cwd" : "--directory", directory);
+    } else if (name == "konsole") {
+      directoryArgument(result, "--workdir", directory);
+    } else if (
+        name == "alacritty"
+        || name == "foot"
+        || name == "footclient"
+        || name == "ghostty"
+        || name == "gnome-terminal"
+        || name == "kgx"
+        || name == "ptyxis"
+        || name == "mate-terminal"
+        || name == "xfce4-terminal"
+    ) {
+      directoryArgument(result, "--working-directory", directory);
+    }
+    if (name == "ghostty" && std::ranges::find(result, "+new-window") == result.end()) {
+      // A normal GTK remote activation does not forward these per-launch
+      // settings to an existing Ghostty process. Keep this request independent.
+      directoryArgument(result, "--gtk-single-instance", "false");
+    }
+  }
+  if (!separator.empty()) {
+    result.push_back(std::move(separator));
+    return result;
+  }
+  if (!execute) {
     return result;
   }
   if (name == "wezterm") {
-    if (result.size() == 1) {
-      result.emplace_back("start");
-    }
     result.emplace_back("--");
   } else if (name == "ptyxis") {
     result.emplace_back("--standalone");
@@ -106,7 +172,9 @@ luciole::terminalArguments(const std::string& configured, bool execute, const st
   return result;
 }
 
-luciole::GioPtr<GAppInfo> luciole::terminalApplication(GAppInfo* application, const std::string& configured) {
+luciole::GioPtr<GAppInfo> luciole::terminalApplication(
+    GAppInfo* application, const std::string& configured, const std::string& workingDirectory
+) {
   if (!G_IS_DESKTOP_APP_INFO(application)
       || !g_desktop_app_info_get_boolean(G_DESKTOP_APP_INFO(application), "Terminal")) {
     return GioPtr<GAppInfo>(G_APP_INFO(g_object_ref(application)));
@@ -120,7 +188,8 @@ luciole::GioPtr<GAppInfo> luciole::terminalApplication(GAppInfo* application, co
   const luciole::GString uri(filename ? g_filename_to_uri(filename, nullptr, nullptr) : nullptr);
   const auto command = uri ? desktopExecCommand(original.get(), uri.get()) : std::string(original.get());
   const luciole::GString directory(g_desktop_app_info_get_string(desktop, "Path"));
-  const auto prefix = terminalArguments(configured, true, directory ? directory.get() : "");
+  const std::string cwd = directory && *directory ? directory.get() : workingDirectory;
+  const auto prefix = terminalArguments(configured, true, cwd);
   std::string exec;
   for (const auto& part : prefix) {
     exec += execArgument(part) + ' ';
@@ -135,6 +204,9 @@ luciole::GioPtr<GAppInfo> luciole::terminalApplication(GAppInfo* application, co
     if (text) {
       g_key_file_set_string(key.get(), "Desktop Entry", item, text.get());
     }
+  }
+  if (!cwd.empty()) {
+    g_key_file_set_string(key.get(), "Desktop Entry", "Path", cwd.c_str());
   }
   g_key_file_set_boolean(
       key.get(), "Desktop Entry", "StartupNotify", g_desktop_app_info_get_boolean(desktop, "StartupNotify")

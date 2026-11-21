@@ -37,9 +37,9 @@ RecursivePermissionEditor::RecursivePermissionEditor(const std::function<void()>
            .maxLines = 5}
       )
   );
-  constexpr std::array names{"Owner read",     "Owner write",   "Owner execute", "Group read",
-                             "Group write",    "Group execute", "Others read",   "Others write",
-                             "Others execute", "Set user ID",   "Set group ID",  "Sticky bit"};
+  constexpr std::array names{"Owner Read",     "Owner Write",   "Owner Execute", "Group Read",
+                             "Group Write",    "Group Execute", "Others Read",   "Others Write",
+                             "Others Execute", "Set User ID",   "Set Group ID",  "Sticky Bit"};
   for (auto* choices : {&m_files, &m_folders}) {
     Flex* body = nullptr;
     addChild(luciole::card(choices == &m_files ? "Files" : "Folders", &body));

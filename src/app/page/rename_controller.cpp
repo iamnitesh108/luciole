@@ -43,7 +43,7 @@ void RenameController::openFileRename(luciole::DirectoryEntry target) {
   const bool validText = g_utf8_validate(target.name.data(), static_cast<gssize>(target.name.size()), nullptr);
   auto editor = std::make_unique<NameDialog>(
       m_page.dialogWidth(DialogWidth::Small),
-      target.type == luciole::FileType::Directory && !target.symlink ? "Rename folder" : "Rename file", "pencil",
+      target.type == luciole::FileType::Directory && !target.symlink ? "Rename Folder" : "Rename File", "pencil",
       validText ? target.name : "", validText ? "" : "Enter a new UTF-8 name for this item.", luciole::filenameProblem,
       [this](std::string name) { submitFileRename(std::move(name)); }, [this] { m_page.dismissPopup(); }
   );
@@ -169,7 +169,7 @@ void RenameController::openPlaceRename(const luciole::Bookmark& bookmark) {
   }
   const auto current = *found; // NOLINT(performance-unnecessary-copy-initialization): own the editing snapshot.
   auto editor = std::make_unique<NameDialog>(
-      m_page.dialogWidth(DialogWidth::Small), "Rename place", "pencil", current.label,
+      m_page.dialogWidth(DialogWidth::Small), "Rename Place", "pencil", current.label,
       "Changes the place label without renaming the folder.",
       [](const std::string& label) -> std::optional<std::string> {
         if (const auto error = luciole::bookmarkLabelProblem(label)) {
@@ -219,7 +219,7 @@ void RenameController::openPlaceIconPicker(const luciole::Bookmark& bookmark) {
       popup->requestUpdate();
     }
   });
-  picker->setTitle("Choose bookmark icon");
+  picker->setTitle("Choose Bookmark Icon");
   picker->setInitialGlyph(initialGlyph);
   auto* control = picker.get();
   picker->setOnCancel([this] { m_page.dismissPopup(); });

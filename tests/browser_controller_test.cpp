@@ -164,6 +164,39 @@ namespace {
     retiring.reset();
   }
 
+  void testBrokenAndChainedLinks() {
+    Fixture fixture;
+    fs::create_symlink("file", fixture.path / "file-link");
+    fs::create_symlink("file-link", fixture.path / "chain");
+    fs::create_symlink("missing", fixture.path / "broken");
+    fs::create_symlink("loop-b", fixture.path / "loop-a");
+    fs::create_symlink("loop-a", fixture.path / "loop-b");
+    Pump pump;
+    BrowserController browser({}, false);
+    const auto root = Location::fromPath(fixture.path.native());
+    browser.open(root);
+    pump.ready(browser);
+    std::optional<Location> launched;
+    browser.setFileActivatedCallback([&](const Location& file) { launched = file; });
+    browser.activate(id(browser, "chain"));
+    pump.until([&] { return launched.has_value(); });
+    TEST_CHECK(launched == root.child("chain"));
+    for (const auto& name : {"broken", "loop-a"}) {
+      launched.reset();
+      browser.activate(id(browser, name));
+      pump.until([&] { return launched.has_value() || !browser.message().empty(); });
+      TEST_CHECK(!launched && !browser.message().empty());
+      TEST_CHECK(browser.model().snapshot().location == root);
+      browser.refresh();
+      pump.ready(browser);
+    }
+    browser.activate(id(browser, "folder-link"));
+    pump.until([&] { return browser.model().snapshot().location != root; });
+    pump.ready(browser);
+    TEST_CHECK(browser.model().snapshot().location == root.child("folder-link"));
+    TEST_CHECK(browser.model().snapshot().entries.size() == 1);
+  }
+
   void testProviderShortcutNavigation() {
     Fixture fixture;
     Pump pump;
@@ -949,6 +982,7 @@ namespace {
 int main() {
   try {
     testActionContextsAndFileLinks();
+    testBrokenAndChainedLinks();
     testProviderShortcutNavigation();
     testDuplicatedTabs();
     testNavigation();

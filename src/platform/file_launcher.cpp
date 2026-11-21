@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <gio/gdesktopappinfo.h>
 #include <set>
 #include <utility>
 
@@ -292,7 +293,17 @@ void luciole::FileLauncher::State::dispatch(
     return;
   }
   try {
-    auto prepared = terminalApplication(application.app.get(), state->terminalCommand);
+    std::string directory;
+    if (G_IS_DESKTOP_APP_INFO(application.app.get())
+        && g_desktop_app_info_get_boolean(G_DESKTOP_APP_INFO(application.app.get()), "Terminal")) {
+      const auto parent = locations.front().parent();
+      if (parent && parent->isNative() && std::ranges::all_of(locations, [&](const Location& item) {
+            return item.parent() == parent;
+          })) {
+        directory = parent->nativePath().value_or("");
+      }
+    }
+    auto prepared = terminalApplication(application.app.get(), state->terminalCommand, directory);
     application.app = std::shared_ptr<GAppInfo>(prepared.release(), g_object_unref);
   } catch (const FileErrorException& failure) {
     if (const auto changed = state->changed; changed && !g_cancellable_is_cancelled(state->cancellable.get())) {

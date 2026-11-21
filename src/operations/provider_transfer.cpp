@@ -794,7 +794,12 @@ struct luciole::ProviderTransfer::State {
         if (remoteProof && action == TransferAction::Move) {
           remoteProof->preserveInactive();
         }
-        const auto error = currentFileError();
+        auto error = currentFileError();
+        // After publication the stage holds the only copy of a replaced destination.
+        if (!retain && node.published && existing) {
+          retain = true;
+          error.message += " The previous destination remains in " + stage.uri();
+        }
         if (!retain) {
           try {
             cleanup(stage);

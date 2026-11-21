@@ -32,8 +32,8 @@ public:
   // Makes row `row` of the shown context menu, whose entry id is `id`, open a submenu: `fill` fills it with show(),
   // now or later; `closed` runs when that submenu closes.
   void attach(std::size_t row, int id, std::function<void()> fill, std::function<void()> closed = {});
-  // Fills the submenu that is opening or open; activating an entry closes every menu, then calls `action` with its
-  // id.
+  // Fills the submenu that is opening or open; activating an entry calls `action` with its id, then closes every
+  // menu.
   void show(std::vector<ContextMenuControlEntry> entries, std::function<void(int)> action, float width);
   // Opens the submenu of the attached row `id`, closing another open one.
   void open(int id, bool keyboard);

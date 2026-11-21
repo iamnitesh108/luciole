@@ -184,11 +184,11 @@ void BulkAclEditor::rebuild() {
   for (std::size_t index = 0; index < m_lists.size(); ++index) {
     auto& list = m_lists[index];
     Flex* body = nullptr;
-    m_rows->addChild(luciole::card(index == 0 ? "Rules" : "Defaults for new items in folders", &body));
+    m_rows->addChild(luciole::card(index == 0 ? "Rules" : "Defaults for New Items in Folders", &body));
     if (index == 1) {
       body->addChild(
           ui::segmented(
-              {.options = options({"Keep", "Edit existing", "Create", "Remove"}),
+              {.options = options({"Keep", "Edit Existing", "Create", "Remove"}),
                .selectedIndex = static_cast<std::size_t>(m_defaults),
                .enabled = m_ready,
                .equalSegmentWidths = true,
@@ -214,7 +214,7 @@ void BulkAclEditor::rebuild() {
             {.align = FlexAlign::Center, .gap = Style::spaceSm, .paddingV = 2.0F},
             ui::label({.text = "Mask", .fontWeight = FontWeight::SemiBold, .minWidth = 104, .maxWidth = 104}),
             ui::segmented(
-                {.options = options({"Keep", "Recalculate", "Remove unused"}),
+                {.options = options({"Keep", "Recalculate", "Remove Unused"}),
                  .selectedIndex = static_cast<std::size_t>(list.mask),
                  .enabled = m_ready,
                  .equalSegmentWidths = true,
@@ -230,7 +230,7 @@ void BulkAclEditor::rebuild() {
         "Keep preserves masks; a newly required mask starts with owning-group rights. Recalculate may widen effective "
         "access. Remove unused requires no named rules and restores owning-group rights."
     ));
-    constexpr std::array names{"Owner", "Owning group", "Others", "Mask rights"};
+    constexpr std::array names{"Owner", "Owning Group", "Others", "Mask Rights"};
     for (std::size_t role = 0; role < tags.size(); ++role) {
       if (tags[role] == luciole::AclTag::Mask && list.mask != luciole::AclMaskPolicy::Keep) {
         continue;
@@ -285,7 +285,7 @@ void BulkAclEditor::rebuild() {
       );
       roles->addChild(
           ui::segmented(
-              {.options = options({"Set bits", "Remove rule"}),
+              {.options = options({"Set Bits", "Remove Rule"}),
                .selectedIndex = value.remove ? 1U : 0U,
                .enabled = m_ready,
                .equalSegmentWidths = true,
@@ -307,7 +307,7 @@ void BulkAclEditor::rebuild() {
     for (const bool user : {true, false}) {
       actions->addChild(
           ui::button(
-              {.text = user ? "Add user rule" : "Add group rule",
+              {.text = user ? "Add User Rule" : "Add Group Rule",
                .glyph = user ? "user-plus" : "users-plus",
                .controlHeight = Style::controlHeightSm,
                .enabled = m_ready && list.named.size() < luciole::maxAclEntries - tags.size(),

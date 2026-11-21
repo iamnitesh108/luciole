@@ -17,6 +17,7 @@
 namespace luciole {
   class PathCompletion;
   class PinService;
+  class ViewPreferenceWriter;
   class TerminalLauncher;
   struct Bookmark;
 } // namespace luciole
@@ -38,13 +39,14 @@ class ScrollView;
 class MenuController {
 public:
   MenuController(
-      PageContext& page, luciole::PinService& pins, TransferController& transferController,
-      luciole::TerminalLauncher& terminal, luciole::PathCompletion& siblingCompletion, CreateController& creator,
-      SubmenuController& submenus, RenameController& renamer, PropertiesController& properties,
-      DetailsHeaderController& columns, LocationBarController& locationBar, ProgramController& programs
+      PageContext& page, luciole::PinService& pins, luciole::ViewPreferenceWriter& preferences,
+      TransferController& transferController, luciole::TerminalLauncher& terminal,
+      luciole::PathCompletion& siblingCompletion, CreateController& creator, SubmenuController& submenus,
+      RenameController& renamer, PropertiesController& properties, DetailsHeaderController& columns,
+      LocationBarController& locationBar, ProgramController& programs
   );
 
-  // Shows `entries` on the popup; activating an entry closes the menu and then calls `action` with its id.
+  // Shows `entries` on the popup; activating an entry calls `action` with its id before closing the menu.
   void showContextMenu(
       std::vector<ContextMenuControlEntry> entries, std::function<void(int)> action, LayoutRect anchor,
       bool alignLeft = false, float preferredWidth = 264.0F
@@ -84,6 +86,7 @@ private:
 
   PageContext& m_page;
   luciole::PinService& m_pins;
+  luciole::ViewPreferenceWriter& m_preferences;
   TransferController& m_transferController;
   luciole::TerminalLauncher& m_terminal;
   luciole::PathCompletion& m_siblingCompletion;

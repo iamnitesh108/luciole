@@ -205,6 +205,9 @@ namespace {
     );
     c.clipboardHasFiles = false;
     TEST_CHECK(!R::state(A::PasteFiles, c, request).enabled);
+    c.clipboardHasImage = true;
+    TEST_CHECK(R::state(A::PasteFiles, c, request).enabled);
+    c.clipboardHasImage = false;
     c.clipboardHasFiles = true;
     c.operationsBusy = true;
     TEST_CHECK(!R::state(A::PasteFiles, c, request).enabled);
@@ -566,9 +569,15 @@ namespace {
         && R::state(A::ExtractTo, c, request).enabled
         && R::state(A::BrowseArchive, c, request).enabled
     );
+    TEST_CHECK(R::openAction(c, request) == A::BrowseArchive);
     c.operationsBusy = true;
     TEST_CHECK(!R::state(A::BrowseArchive, c, request).enabled && !R::state(A::Compress, c, request).enabled);
+    // A running job refuses Browse Archive instead of letting Open fall back to another application.
+    TEST_CHECK(R::openAction(c, request) == A::BrowseArchive);
     c.operationsBusy = false;
+    c.chooser = true;
+    TEST_CHECK(R::openAction(c, request) == A::Open);
+    c.chooser = false;
     test::editEntries(data, [&](auto& entries) { entries.back().symlink = true; });
     ++data.generation;
     model.applySnapshot(data);
@@ -583,6 +592,7 @@ namespace {
     model.select(1);
     const auto plain = R::capture(c);
     TEST_CHECK(R::state(A::Compress, c, plain).enabled && !R::state(A::BrowseArchive, c, plain).enabled);
+    TEST_CHECK(R::openAction(c, plain) == A::Open);
     model.select(6);
     TEST_CHECK(R::state(A::Compress, c, R::capture(c)).enabled);
     test::editEntries(data, [&](auto& entries) {
@@ -593,6 +603,7 @@ namespace {
     model.applySnapshot(data);
     model.select(7);
     TEST_CHECK(!R::state(A::Compress, c, R::capture(c)).enabled);
+    TEST_CHECK(R::openAction(c, R::capture(c)) == A::Open);
   }
   void testSplitArchiveActions() {
     luciole::DirectoryModel model;
@@ -688,6 +699,62 @@ namespace {
     TEST_CHECK(!luciole::isSupportedArchive(luciole::Location::fromPath("/tmp/plain.zst"), "application/zstd"));
     TEST_CHECK(!luciole::isSupportedArchive(luciole::Location::fromPath("/tmp/plain.xz"), "application/x-xz"));
   }
+  void testSearchTrashActions() {
+    luciole::DirectoryModel model;
+    auto data = snapshot();
+    data.entries = {entry(1, "match.txt"), entry(2, "match.txt")};
+    test::editEntries(data, [](auto& entries) {
+      entries[0].place = luciole::Location::fromPath("/tmp/action-fixture/first/match.txt");
+      entries[1].place = luciole::Location::fromPath("/tmp/action-fixture/second/match.txt");
+    });
+    model.applySnapshot(data);
+    model.selectAll();
+    luciole::ActionContext context{.model = model, .context = 79, .query = "match", .pinned = {}};
+    const auto request = R::capture(context);
+    TEST_CHECK(request.targets.size() == 2 && R::state(A::Trash, context, request).enabled);
+    TEST_CHECK(R::state(A::DeletePermanently, context, request).enabled);
+    context.operationsBusy = true;
+    TEST_CHECK(!R::state(A::Trash, context, request).enabled);
+    context.operationsBusy = false;
+    context.query = "different";
+    TEST_CHECK(!R::state(A::Trash, context, request).enabled);
+    context.query = "match";
+    for (const auto field : {0, 1, 2, 3, 4}) {
+      auto denied = data;
+      ++denied.generation;
+      test::editEntries(denied, [field](auto& entries) {
+        if (field == 0) {
+          entries[1].access.trash = false;
+        }
+        if (field == 1) {
+          entries[1].metadataPending = true;
+        }
+        if (field == 2) {
+          entries[1].metadataFailed = true;
+        }
+        if (field == 3) {
+          entries[1].place = luciole::Location::fromUri("sftp://example.invalid/match.txt");
+        }
+        if (field == 4) {
+          entries[1].place = luciole::Location::fromUri("trash:///match.txt");
+        }
+      });
+      model.applySnapshot(denied);
+      TEST_CHECK(!R::state(A::Trash, context, R::capture(context)).enabled);
+      data.generation = denied.generation + 1;
+      model.applySnapshot(data);
+      model.selectAll();
+    }
+    test::editEntries(data, [](auto& entries) {
+      entries[1].place = luciole::Location::fromPath("/tmp/action-fixture/second/replaced.txt");
+    });
+    ++data.generation;
+    model.applySnapshot(data);
+    TEST_CHECK(!R::state(A::Trash, context, request).enabled);
+    model.clearSelection();
+    TEST_CHECK(!R::state(A::Trash, context, R::capture(context)).enabled);
+  }
+
   void testCapabilitiesAndTargets() {
     luciole::DirectoryModel model;
     auto data = snapshot();
@@ -744,7 +811,7 @@ namespace {
     TEST_CHECK(!R::state(A::Open, c, request).enabled);
     auto search = R::capture(c);
     search.targets = request.targets;
-    TEST_CHECK(!R::state(A::Trash, c, search).enabled && R::state(A::Rename, c, search).enabled);
+    TEST_CHECK(R::state(A::Trash, c, search).enabled && R::state(A::Rename, c, search).enabled);
     c.query = {};
     ++c.context;
     TEST_CHECK(!R::state(A::Open, c, request).enabled);
@@ -963,6 +1030,7 @@ int main() {
     testPendingActionFacts();
     testPreviewActions();
     testCapabilitiesAndTargets();
+    testSearchTrashActions();
     testRenameHistoryActions();
     testBulkSelection();
     testChooserGate();

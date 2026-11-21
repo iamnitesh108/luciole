@@ -2,25 +2,25 @@
 
 ## Navigation and search
 
-The location bar shows clickable folder breadcrumbs. Double-click a breadcrumb or unused space in the bar to edit the path; Ctrl+L also starts editing. Path editing works with the tab bar hidden and in file chooser windows too. Tab accepts a path completion when one is available. Home and its descendants use Home as the breadcrumb root; you can still navigate above it.
+The location bar shows clickable folder breadcrumbs. Double-click a breadcrumb or unused space in the bar to edit the path; with Settings → General → Single-Click Location Bar to Edit enabled, one click on the current breadcrumb or unused space starts editing. Ctrl+L also starts editing. Path editing works with the tab bar hidden and in file chooser windows too. Tab accepts a path completion when one is available. Home and its descendants use Home as the breadcrumb root; you can still navigate above it.
 
 The mouse's Back and Forward side buttons navigate folder history, like the toolbar arrows or Alt+Left/Alt+Right. Each press navigates once; releasing the button does not navigate again. In split view, pressing a side button over a browsing pane focuses that pane and uses its own history. Over shared chrome, the active pane's history is used. Side buttons do not navigate behind an open dialog or during a captured drag, and do nothing when the corresponding history is empty.
 
-By default, typing while browsing starts a recursive filename search rooted in the current folder. Settings → General → When typing also offers Filter current folder and Select names. Filtering immediately narrows the live folder listing by a literal, case-insensitive name substring, without looking inside subfolders. For example, `temp` matches `Template1.csv`, `Template2.csv` and `Templates` in the current folder, but not files inside `Templates`. Hidden-file and backup-file visibility still apply.
+By default, typing while browsing starts a recursive filename search rooted in the current folder. Settings → General → When Typing also offers Filter Current Folder and Select Names. Filtering immediately narrows the live folder listing by a literal, case-insensitive name substring, without looking inside subfolders. For example, `temp` matches `Template1.csv`, `Template2.csv` and `Templates` in the current folder, but not files inside `Templates`. Hidden-file and backup-file visibility still apply.
 
-The field next to the location bar shows Search files… for recursive search, or Filter files… in current-folder mode. Clicking it or pressing Ctrl+F uses the same scope. Clear the query or press Escape to return to the folder listing. Select names changes typing to name selection while keeping explicit searches recursive. Content search and an indexing service are not part of the current search.
+The field next to the location bar shows Search files… for recursive search, or Filter files… in current-folder mode. Clicking it or pressing Ctrl+F uses the same scope. Clear the query or press Escape to return to the folder listing. Select Names changes typing to name selection while keeping explicit searches recursive. Content search and an indexing service are not part of the current search.
 
 | Action | Shortcut |
 | --- | --- |
 | Back / Forward | Alt+Left / Alt+Right |
-| Parent folder / Home | Alt+Up or Backspace / Alt+Home |
-| Keyboard shortcuts | F1 |
-| Edit location / Focus search | Ctrl+L / Ctrl+F |
+| Parent Folder / Home | Alt+Up or Backspace / Alt+Home |
+| Keyboard Shortcuts | F1 |
+| Edit Location / Focus search | Ctrl+L / Ctrl+F |
 | Open terminal in current folder | F4 |
 | Refresh | F5 |
 | Undo / Redo | Ctrl+Z / Ctrl+Shift+Z |
-| Show hidden files | Ctrl+H |
-| Show sidebar / Show preview | F9 / F8 |
+| Show Hidden Files | Ctrl+H |
+| Show Sidebar / Show Preview | F9 / F8 |
 
 Open Terminal Here is near the top of the folder background menu. A single folder's context menu offers Open in Terminal directly, targeting that folder. F4 always uses the active pane's current folder, regardless of selection; it also works while editing the location/search field, without submitting or clearing its text. Dialogs block the shortcut. Terminal actions require an accessible native folder and use Settings → General → Terminal, then the existing environment/discovery fallback.
 
@@ -34,13 +34,43 @@ The cursor ring marks the item the keyboard acts on and stays visible inside a m
 
 Enter an address such as `smb://server/share` in the location bar, or open a saved network place. If the location is not mounted, Luciole asks the installed GIO/GVfs provider to connect and then opens the folder. You can also open an SMB server address and activate one of its listed shares. The same mounted share becomes visible to other applications using that desktop session.
 
-The **Network** sidebar entry is always available, including when no servers are found. Discovery starts when you open Network or expand it in the optional sidebar tree; ordinary local startup does not start discovery. Open a discovered server and its share as usual. You can also enter `network:///` directly. Grid, List and Columns use the discovered destination when opening an entry; middle-click and Ctrl+Enter can open it in a new tab.
+### SFTP over SSH
+
+Press Ctrl+L, enter an address and press Enter:
+
+```text
+sftp://user@server/home/user
+sftp://user@server:2222/path/to/folder
+```
+
+Replace the username, server, port and path with your own values. Omit the port to use 22. The path belongs to the remote SFTP filesystem; a restricted server may expose a different root from its ordinary SSH shell. Encode spaces as `%20`. Do not put passwords in addresses. GVfs also accepts `ssh://` as an alias for SFTP; it opens files, not an interactive terminal. The server must offer the SFTP subsystem.
+
+The provider handles passwords, SSH keys and the SSH agent available to its session. When confirmation or a password is needed, Luciole displays its request. On first connection, verify the server identity through a trusted source before accepting it. An existing authenticated mount or usable key can open without a password prompt. You do not need to mount the folder in another file manager first.
+
+### Missing network support
+
+An immediate **Operation not supported** error without a login prompt can mean GIO cannot access a backend for that protocol. Luciole identifies an unadvertised scheme and explains that its GIO/GVfs backend and session services need to be installed or enabled. A provider that advertises the protocol can also reject an operation; its own error is preserved.
+
+Install the distribution's GVfs service and protocol backends, then restart Luciole. [Arch Linux](https://archlinux.org/packages/extra/x86_64/gvfs/) and [Fedora](https://packages.fedoraproject.org/pkgs/gvfs/gvfs/) provide SFTP in `gvfs`; [Debian](https://packages.debian.org/trixie/gvfs-backends) also needs `gvfs-backends`. An SSH client alone does not supply the GIO backend. On NixOS, enable `services.gvfs.enable = true;` in your system configuration and rebuild; Luciole's modules leave that choice to you. See [NixOS installation](installation.md#nixos). A usable session D-Bus connection is required. A launcher that forces `GIO_USE_VFS=local` disables remote access.
+
+To check the desktop provider independently, run this in a terminal in the same desktop session, using your address:
+
+```sh
+gio mount 'sftp://user@server:2222/path/to/folder'
+gio list 'sftp://user@server:2222/path/to/folder'
+```
+
+These commands connect to and list the remote folder. If they fail too, include their error when reporting the problem. If they work while Luciole still fails, report how Luciole was installed and launched, its version and its exact error.
+
+### Network discovery and login
+
+The **Network** sidebar entry is shown by default, including when no servers are found. Drag it among Places or use Move Up/Move Down in its context menu to save its position. Settings → Appearance → Sidebar → Show Network hides or restores it in both sidebar modes; its context menu also offers Hide Network. Hiding the entry preserves its position and does not disable direct network addresses or existing network tabs. Discovery starts when you open Network or expand it in the optional sidebar tree; ordinary local startup does not start discovery. Open a discovered server and its share as usual. You can also enter `network:///` directly. Grid, List and Columns use the discovered destination when opening an entry; middle-click and Ctrl+Enter can open it in a new tab.
 
 Luciole discovers SMB computers using its built-in WS-Discovery client, with optional DNS-SD discovery through GVfs and Avahi. No external WS-Discovery helper is needed. Discovery runs in the background while Network is open; closing its last view stops Luciole's discovery workers. Server names may replace numeric addresses as metadata arrives. Refresh retries discovery. A reachable server may not advertise itself, and multicast filtering can prevent discovery. You can still enter its known address or use a saved network place. Discovery does not ask for credentials or open every share in the background. If nothing is discovered, Network remains available.
 
 When the server requests login, use the username, domain and password fields, or Guest if the server offers anonymous access. A rejected password can produce another login prompt. Cancel stops that connection attempt; refreshing or opening the address again lets you retry. Navigating away or closing the page cancels its pending request. Credentials are passed to GIO for the session and are not saved in Luciole settings or bookmarks.
 
-Network protocols require their installed GVfs backends and a session D-Bus connection. See [packaging requirements](../../PACKAGING.md#gvfs-and-trash). A separate connect-to-server form, device-unlock dialogs and process-blocked mount questions are still planned.
+Network protocols require their installed GVfs backends and a session D-Bus connection. See [packaging requirements](../../PACKAGING.md#gvfs-and-trash). A separate connect-to-server form and process-blocked mount questions are still planned.
 
 ## Views and selection
 
@@ -48,23 +78,23 @@ Network protocols require their installed GVfs backends and a session D-Bus conn
 
 Use the toolbar or main menu to choose Grid (Ctrl+1), List (Ctrl+2) or Columns (Ctrl+3). In every view, Ctrl+wheel (or Ctrl with a touchpad scroll), Ctrl+Plus and Ctrl+Minus change the icon size, and Ctrl+0 resets it. Each view keeps its own size. View, zoom, sort and hidden-file choices are saved as defaults for new browsing pages. Existing tabs and panes keep their own browsing state.
 
-List and Columns shorten overflowing filenames in the middle by default, keeping their beginning and ending visible. Settings → Views → Long filenames also offers Shorten at the end. Changes apply to open panes immediately. Grid keeps its two-line name wrapping.
+List and Columns shorten overflowing filenames in the middle by default, keeping their beginning and ending visible. Settings → Views → Long Filenames also offers Shorten at the End. Changes apply to open panes immediately. Grid keeps its two-line name wrapping.
 
-List headers sort by their column. Drag their dividers to resize columns; Settings → List columns controls visibility and order. Additional columns include accessed/created time, owner, group, permissions and location. Missing provider metadata stays unavailable rather than becoming a made-up value. Grid view uses the toolbar's Sort menu. Shown hidden items always sort after visible ones; Folders first applies within each group.
+List headers sort by their column. Drag their dividers to resize columns; Settings → List Columns controls visibility and order. Additional columns include accessed/created time, owner, group, permissions and location. Missing provider metadata stays unavailable rather than becoming a made-up value. Grid view uses the toolbar's Sort menu. By default, shown hidden items sort among visible ones. Hidden Last, in the Sort menu and Settings, sorts them after visible ones; Folders First then applies within each group.
 
-The background right-click menu also offers Sort. Changing the sort field, direction or Folders first shows the beginning of the new order, including in folders that need scrolling. Selected items stay selected. Sort changes made through list headings or Settings follow the same rule.
+The background right-click menu also offers Sort. Changing the sort field, direction, Folders First or Hidden Last shows the beginning of the new order, including in folders that need scrolling. Selected items stay selected. Sort changes made through list headings or Settings follow the same rule.
 
 In large folders, names can appear while detail values are still loading. “Reading…” means a value is pending; “Unknown” means it was unavailable after querying. Hidden extra columns are not queried by ordinary large-folder browsing. Enabling one loads its visible rows. Sorting by metadata or selecting many items can require facts from the rest of the folder; file actions wait for the facts they need.
 
-The floating status pill reports actions, search and selection. Settings → Appearance → Always show status bar keeps it visible when idle with the item count and, when available, free space.
+The floating status pill reports actions, search and selection. Settings → Appearance → Always Show Status Bar keeps it visible when idle with the item count and, when available, free space.
 
 Click an entry to select it, Ctrl+click to toggle it and Shift+click to select a range. Clicking empty space clears selection. Drag an area over entries to select several. Ctrl+A selects all visible results, Ctrl+Shift+I inverts selection and Ctrl+S selects by pattern. Escape clears the selection when browsing. Opening uses double-click by default; Settings → General offers single-click opening.
 
-Opening a local file uses the default application for its file type. Use Open With to choose another application or change that file type's default.
+Opening a local file uses the default application for its file type; supported local archives open in Luciole's archive browser instead (see [archives](file-operations.md#archives)). Use Open With to choose another application or change that file type's default.
 
 ## Places and folder trees
 
-Places contains Home, available XDG user folders, Trash and your pinned folders. Pin or unpin a folder through its context menu, or drag a folder into Places. Drag rows to reorder them. Trash can move within the list but cannot be unpinned. Its context menu offers Empty Trash.
+Places contains Home, available XDG user folders, Trash, Network and your pinned folders. Pin or unpin a folder through its context menu, or drag a folder into Places. Drag rows to reorder them. Trash can move within the list but cannot be unpinned. Its context menu offers Empty Trash.
 
 Middle-click anywhere inside a Places or mounted-drive row to open that folder in a new tab, including the row's top and bottom edges. Dropping folders near Places row edges still inserts or reorders pins; the center remains the transfer target.
 
@@ -72,21 +102,29 @@ Drop native files or folders onto the Trash row to move them to Trash. This work
 
 Pinned folders use the shared GTK bookmark file, also used by Nemo and Nautilus. Adding, removing, renaming or reordering user bookmarks in Luciole updates that file; changes from another application appear automatically. Built-in Places keep their Luciole layout and are not automatically added to other applications' bookmarks. Old Luciole-only pins are not imported.
 
-Use a bookmark's context menu and choose **Change icon…** to select a Tabler icon. This icon is stored in Luciole's private state and does not change the shared GTK bookmark or its appearance in other applications. Choose **Reset to default** to restore the place's standard icon.
+Use a bookmark's context menu and choose **Change Icon…** to select a Tabler icon. This icon is stored in Luciole's private state and does not change the shared GTK bookmark or its appearance in other applications. Choose **Reset to Default** to restore the place's standard icon.
 
 Drives starts with File System (`/`), followed by the volumes and mounts GIO reports: removable media, extra partitions and network mounts, but not other system mounts such as `/home` or `/boot`. Mounted drives come before unmounted ones. In the Places list, each mounted drive shows a bar of its used space under its row; the bar turns red at 90% used. Unmounted drives and filesystems that do not report a size have no bar.
+
+To open a LUKS-encrypted drive, click its row under Drives. When the provider needs a passphrase, Luciole opens Unlock Drive. Enter the passphrase and choose Unlock; the mounted folder opens after the provider succeeds. If unlocking fails, Luciole shows the provider's error; click the drive again to retry. Cancel, Escape or dismissing the dialog stops the request. Navigating elsewhere or closing the pane also cancels it. Your current folder stays visible until mounting succeeds.
+
+Device unlocking requires the GVfs UDisks volume monitor, the UDisks2 system service and working session/system D-Bus connections. System policy may additionally require authorization through your desktop's authentication agent. Luciole passes credentials to GIO; it never writes passphrases into its configuration or history. The provider may retain them for the session through an available system credential service. Drives already unlocked and mounted elsewhere can be opened directly. Key management and an explicit lock action remain with system disk tools.
 
 The eject button and the drive's context menu remove a mounted drive the way GNOME Files does: Safely Remove powers off a USB disk plugged in during the session, Eject ejects removable media, and Unmount unmounts anything else. Open panes leave the drive first. Undo/Redo history that holds that mount is retired, and removal waits briefly for cleanup and cancelled preview/thumbnail reads. History belonging to other mounts stays available. Removal never forces: active operations or other programs with open files still prevent removal, and the status bar names the reported blockers.
 
 Settings → Appearance controls sidebar visibility, width, drive rows and the optional folder tree. The separate expandable-folder preference adds a tree within List view. Both tree options are off by default.
 
+Below 760 logical pixels wide, the sidebar slides out of the way to leave room for browsing. Use the sidebar button at the left of the toolbar or F9 to open it as a drawer over the file area. Selecting a destination, pressing Escape, pressing F9 again or clicking outside closes the drawer. Escape returns keyboard focus to the file view. Tab and Shift+Tab stay within the open drawer. Folder-tree navigation, pin menus and supported folder drops remain available there.
+
+Widening the window restores the saved docked-sidebar preference and width. Temporary drawer opening, dismissal and window resizing do not rewrite either setting. In a wide window, F9 and Show sidebar still save the usual visibility preference. Each window adapts independently, and switching tabs or split panes closes a temporary drawer.
+
 ## Tabs and split view
 
 Each tab can contain one or two browsing panes. A split belongs to its tab; it does not create another tab. Navigation, search, selection and scroll belong to each pane. Actions target the focused pane.
 
-The tab bar is shown by default even with one tab. Settings → Appearance → Always show tab bar can hide it when there is only one tab.
+The tab bar is shown by default even with one tab. Settings → Appearance → Always Show Tab Bar can hide it when there is only one tab.
 
-Middle-click a folder, breadcrumb or Places row, or use a folder's Open In → New Tab menu, to open it in another tab. Settings → General → Switch to new folder tabs is on by default. Turn it off to load those folders in background tabs while keeping your current tab, focused pane, search, selection and scroll. Shift+middle-click reverses the preference for that one opening. Click the tab or use Ctrl+Tab to visit it when ready.
+Middle-click a folder, breadcrumb or Places row, or use a folder's Open In → New Tab menu, to open it in another tab. Settings → General → Switch to New Folder Tabs is on by default. Turn it off to load those folders in background tabs while keeping your current tab, focused pane, search, selection and scroll. Shift+middle-click reverses the preference for that one opening. Click the tab or use Ctrl+Tab to visit it when ready.
 
 Ctrl+T, the plus button and explicit New Tab menu actions always switch to the new tab. Duplicating or reopening a tab also selects it, and New Window retains its normal focus behavior. The folder-tab preference does not change those actions.
 
@@ -98,22 +136,22 @@ Ctrl+T, the plus button and explicit New Tab menu actions always switch to the n
 | Next / Previous tab | Ctrl+Tab / Ctrl+Shift+Tab |
 | Toggle split / Switch pane | F3 / F6 |
 
-Enable Restore tabs from last closed window in Settings → General to reopen the last closed window's tabs once in a new window or on startup without a requested location. The saved session is consumed when restored.
+Enable Restore Tabs from Last Closed Window in Settings → General to reopen the last closed window's tabs once in a new window or on startup without a requested location. The saved session is consumed when restored.
 
 ## Miller columns
 
 Columns show successive folder levels inside one pane. Selecting one folder reveals its child column. Selecting a different folder replaces the descendant branch. Right or Enter moves into the selected folder's column with its first item selected; Left, Backspace or Alt+Up moves back to the parent column. Each column scrolls vertically, and horizontal scrolling reveals additional levels. Dividers resize columns.
 
-Show parent folders is enabled by default in Settings → Views. Disable it to start Column view at the current folder alone. Deep navigation remains possible, while the application retains only a bounded set of live columns.
+Show Parent Folders is enabled by default in Settings → Views. Disable it to start Column view at the current folder alone. Deep navigation remains possible, while the application retains only a bounded set of live columns.
 
 ## Preview and Properties
 
 The side preview is on by default. Resize its divider to change the saved width; small windows temporarily collapse it when there is insufficient room. F8 toggles it, and Space opens a quick preview for one selected item. In the quick preview, the arrow keys move the selection as in the view behind it: Left and Right step one item, Up and Down one list item or one grid row. Space or Escape closes it. Images, video stills, the first PDF page and embedded audio artwork depend on installed providers. Video previews are still images, not playback.
 
-The preview shows essential content facts such as file size, dimensions, format and duration when available. Properties (Alt+Return) includes additional technical and permission information. Properties and file-operation dialogs stay open when you switch windows; use their buttons or Escape to close them. See [file operations](file-operations.md#properties-and-permissions).
+The preview shows essential content facts such as file size, dimensions, format and duration when available. Selecting a folder shows its calculated size and how many files and folders it contains; the calculation runs once per selection, and large folders may take a moment or report a partial result. Properties (Alt+Return) includes additional technical and permission information, and its folder contents card adds a Stop button and detailed notes. Properties and file-operation dialogs stay open when you switch windows; use their buttons or Escape to close them. See [file operations](file-operations.md#properties-and-permissions).
 
 File types use the system MIME database and GIO content detection when the name alone is insufficient. For example, a text `.bash_history` can show as Plain text document with MIME `text/plain`; an unrecognized binary stays a generic file. The detected type is shared by the list, preview and Properties. Readable local UTF-8 text formats, including YAML and desktop-entry contents, support text previews. Desktop entries also show their localized application or link name and description in preview and Properties.
 
 ## Background operations
 
-The toolbar's File Operations button shows the number of active jobs. Open it, or use File operations in the main menu, for progress and recent results across the running application's tabs and windows. See [file operations](file-operations.md#file-operations-popover) for cancellation, reports and retry behavior.
+The toolbar's File Operations button shows the number of active jobs. Open it, or use File Operations in the main menu, for progress and recent results across the running application's tabs and windows. See [file operations](file-operations.md#file-operations-popover) for cancellation, reports and retry behavior.

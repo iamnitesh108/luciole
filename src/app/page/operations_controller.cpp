@@ -26,6 +26,7 @@ std::unique_ptr<Button> OperationsController::buildButton() {
   return ui::button(
       {.out = &m_button,
        .glyph = "progress",
+       .glyphSize = Style::baseGlyphSize,
        .variant = ButtonVariant::Ghost,
        .tooltip = "File operations",
        // A file picker starts no file jobs; progress of browsing windows does not belong in it.
@@ -105,7 +106,7 @@ void OperationsController::open() {
           {.justify = FlexJustify::End},
           ui::button(
               {.out = &clear,
-               .text = "Clear finished",
+               .text = "Clear Finished",
                .controlHeight = Style::controlHeightSm,
                .variant = ButtonVariant::Ghost,
                .onClick = [this] { m_hub.clearFinishedActivities(); }}
@@ -190,7 +191,7 @@ void OperationsController::details(std::uint64_t id) {
                    }}
           ),
           ui::button(
-              {.text = "Copy report",
+              {.text = "Copy Report",
                .enabled = m_page.clipboard().available(),
                .variant = ButtonVariant::Ghost,
                .onClick = [this, report] { m_page.clipboard().setClipboardText(*report); }}

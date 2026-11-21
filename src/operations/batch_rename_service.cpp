@@ -187,8 +187,12 @@ namespace {
       }
       if (row.changed && row.error.empty() && !sources.contains(row.name)) {
         struct stat info{};
+        // A case-insensitive folder resolves a case-only rename to the item itself; apply's
+        // RENAME_NOREPLACE still rejects a hard-link alias under the new name.
         if (::fstatat(plan.fd.get(), row.name.c_str(), &info, AT_SYMLINK_NOFOLLOW) == 0) {
-          row.error = "An unselected item already has this name.";
+          if (!luciole::sameIdentity(info, plan.items[i]->identity)) {
+            row.error = "An unselected item already has this name.";
+          }
         } else if (errno != ENOENT) {
           row.error = std::strerror(errno);
         }

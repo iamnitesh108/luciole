@@ -55,9 +55,11 @@ namespace {
          {P::ShowSizeCaption, false},
          {P::ShowEmblems, true},
          {P::ShowBackups, true},
+         {P::SingleClickLocationEdit, false},
          {P::SwitchToNewTab, true},
          {P::ConfirmPermanentDeletion, true},
          {P::SidebarTree, false},
+         {P::ShowNetwork, true},
          {P::ExpandableFolders, true}}
     );
     writer.submit(
@@ -68,9 +70,11 @@ namespace {
          {P::ShowModifiedCaption, true},
          {P::ShowEmblems, false},
          {P::ShowBackups, false},
+         {P::SingleClickLocationEdit, true},
          {P::SwitchToNewTab, false},
          {P::ConfirmPermanentDeletion, false},
          {P::SidebarTree, true},
+         {P::ShowNetwork, false},
          {P::ExpandableFolders, false}}
     );
     writer.saveGridIconSize(96);
@@ -116,6 +120,7 @@ namespace {
         && loaded->browser.viewMode == luciole::ViewMode::Grid
         && !loaded->browser.showHidden
         && !loaded->browser.showBackups
+        && loaded->browser.singleClickLocationEdit
         && !loaded->browser.switchToNewTab
         && !loaded->browser.confirmPermanentDeletion
         && loaded->browser.gridIconSize == 64
@@ -124,6 +129,7 @@ namespace {
         && loaded->browser.sidebarWidth == 280
         && !loaded->browser.showSidebar
         && loaded->browser.sidebarTree
+        && !loaded->browser.showNetwork
         && !loaded->browser.expandableFolders
         && loaded->browser.sort == finalSort
         && loaded->browser.columns == hiddenColumns

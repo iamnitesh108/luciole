@@ -2,6 +2,7 @@
 
 #include "fs/gio_interop.h"
 #include "fs/gio_ptr.h"
+#include "fs/location_mount.h"
 
 #include <algorithm>
 #include <format>
@@ -244,44 +245,20 @@ void luciole::DriveMonitor::refreshUsage() {
 }
 
 void luciole::DriveMonitor::mount(
-    const std::string& key, std::function<void(std::optional<Location>, std::string)> done
+    const std::string& key, LocationMount& request, std::function<void(std::expected<Location, FileError>)> done
 ) {
+  request.cancel();
   const auto* drive = find(key);
   if (drive != nullptr && drive->root) {
-    done(drive->root, {});
+    done(*drive->root);
     return;
   }
   const auto handle = m_state->handles.find(key);
-  if (drive == nullptr || handle == m_state->handles.end()) {
-    done(std::nullopt, "This drive is no longer available.");
+  if (drive == nullptr || handle == m_state->handles.end() || !handle->second.volume) {
+    done(std::unexpected(FileError{FileErrorKind::Unavailable, "This drive is no longer available."}));
     return;
   }
-  struct Request {
-    std::weak_ptr<State> state;
-    std::function<void(std::optional<Location>, std::string)> done;
-  };
-  const GioPtr<GMountOperation> operation(g_mount_operation_new());
-  g_volume_mount(
-      handle->second.volume.get(), G_MOUNT_MOUNT_NONE, operation.get(), nullptr,
-      [](GObject* source, GAsyncResult* result, gpointer data) {
-        const std::unique_ptr<Request> request(static_cast<Request*>(data));
-        GError* error = nullptr;
-        const bool mounted = g_volume_mount_finish(G_VOLUME(source), result, &error) != FALSE;
-        auto message = errorText(error);
-        if (request->state.expired()) {
-          return;
-        }
-        std::optional<Location> root;
-        if (mounted) {
-          if (const GioPtr<GMount> mount(g_volume_get_mount(G_VOLUME(source))); mount) {
-            const GioPtr<GFile> file(g_mount_get_root(mount.get()));
-            root = locationFromFile(file.get());
-          }
-        }
-        request->done(root, std::move(message));
-      },
-      new Request{m_state, std::move(done)}
-  );
+  request.startVolume(handle->second.volume.get(), std::move(done));
 }
 
 void luciole::DriveMonitor::remove(const std::string& key, std::function<void(DriveRemoveResult)> done) {

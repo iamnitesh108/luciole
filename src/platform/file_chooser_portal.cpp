@@ -112,6 +112,11 @@ luciole::FileChooserRequest luciole::parseFileChooserRequest(FileChooserMode mod
   const char* title = nullptr;
   GVariant* options = nullptr;
   g_variant_get(parameters, "(&o&s&s&s@a{sv})", &handle, &appId, &parentWindow, &title, &options);
+  // Request objects belong under the portal request tree; other paths would be exported on our connection.
+  if (!std::string_view(handle).starts_with("/org/freedesktop/portal/desktop/request/")) {
+    g_variant_unref(options);
+    throw std::runtime_error("invalid request handle");
+  }
   request.handle = handle;
   request.appId = appId;
   request.parentWindow = parentWindow;

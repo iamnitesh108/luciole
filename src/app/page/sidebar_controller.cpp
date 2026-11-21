@@ -37,9 +37,12 @@ SidebarController::SidebarController(
 
 void SidebarController::load(const luciole::BrowserSettings& settings) {
   m_sidebarWidth = settings.sidebarWidth;
-  m_showSidebar = settings.showSidebar;
+  m_state.setPreferred(settings.showSidebar);
+  (void)m_state.updateWidth(static_cast<float>(m_page.surface().width()));
+  m_reveal = visible() ? 1.0F : 0.0F;
   m_sidebarTree = settings.sidebarTree;
   m_showDrives = settings.showDrives;
+  m_showNetwork = settings.showNetwork;
 }
 
 void SidebarController::applySettings(
@@ -60,13 +63,19 @@ void SidebarController::applySettings(
       m_places->setShowDrives(m_showDrives);
     }
   }
+  if (force || before.showNetwork != settings.showNetwork) {
+    m_showNetwork = settings.showNetwork;
+    if (m_places) {
+      m_places->setShowNetwork(m_showNetwork);
+    }
+  }
   if (force || before.sidebarWidth != settings.sidebarWidth) {
     m_sidebarWidth = settings.sidebarWidth;
   }
 }
 
 void SidebarController::setVisible(bool visible, bool persist) {
-  if (visible == m_showSidebar) {
+  if (!m_state.compact() && visible == m_state.visible()) {
     return;
   }
   m_page.dispatcher().cancelPointerCapture();
@@ -74,7 +83,8 @@ void SidebarController::setVisible(bool visible, bool persist) {
     m_drags.cancelDrag();
   }
   m_page.captureViewAnchor();
-  m_showSidebar = visible;
+  m_state.setPreferred(visible);
+  revealDrawer();
   if (!visible) {
     m_restorePlaceFocus.reset();
     for (const Node* node = m_page.dispatcher().focusedArea(); node != nullptr; node = node->parent()) {
@@ -91,14 +101,21 @@ void SidebarController::setVisible(bool visible, bool persist) {
 }
 
 float SidebarController::width() const {
-  return m_showSidebar ? static_cast<float>(std::min(m_sidebarWidth, maximumWidth())) + kWorkspaceInset : 0.0F;
+  return !m_state.compact()
+      ? (static_cast<float>(std::min(m_sidebarWidth, maximumWidth())) + kWorkspaceInset) * m_reveal
+      : 0.0F;
 }
 
-float SidebarController::controlWidth() const { return m_showSidebar ? width() - kGapInset : 0.0F; }
+float SidebarController::controlWidth() const {
+  return visible() || m_reveal > 0
+      ? static_cast<float>(std::min(m_sidebarWidth, maximumWidth())) + kWorkspaceInset - kGapInset
+      : 0.0F;
+}
 
 int SidebarController::maximumWidth() const {
   return std::clamp(
-      static_cast<int>(m_page.surface().width()) - 320 - static_cast<int>(kWorkspaceInset * 3),
+      static_cast<int>(m_page.surface().width())
+          - (m_state.compact() ? 48 : 320 + static_cast<int>(kWorkspaceInset * 3)),
       luciole::kMinSidebarWidth, luciole::kMaxSidebarWidth
   );
 }
@@ -123,6 +140,7 @@ void SidebarController::take(Node& host) {
 }
 
 void SidebarController::giveBack() {
+  dismissDrawer();
   if (m_sidebarBundle && m_sidebarBundle->parent()) {
     m_detachedSidebar = m_sidebarBundle->parent()->removeChild(m_sidebarBundle);
   }
@@ -132,11 +150,11 @@ void SidebarController::reuseFrom(SidebarController& previous) {
   if (&previous == this || !m_sidebarBundle || !previous.m_sidebarBundle) {
     return;
   }
-  auto ready = previous.m_sidebarBundle->removeChild(previous.m_places);
-  auto placeholder = m_sidebarBundle->removeChild(m_places);
+  auto ready = previous.m_sidebarPanel->removeChild(previous.m_places);
+  auto placeholder = m_sidebarPanel->removeChild(m_places);
   std::swap(m_places, previous.m_places);
-  m_sidebarBundle->insertChildAt(0, std::move(ready));
-  previous.m_sidebarBundle->insertChildAt(0, std::move(placeholder));
+  m_sidebarPanel->insertChildAt(0, std::move(ready));
+  previous.m_sidebarPanel->insertChildAt(0, std::move(placeholder));
   m_placesDirty = previous.m_placesDirty;
   previous.m_placesDirty = true;
   configureCallbacks();
@@ -147,9 +165,11 @@ void SidebarController::configureCallbacks() {
   m_places->setChangedCallback([this] { m_page.requestSync(); });
   m_places->setTreeEnabled(m_sidebarTree);
   m_places->setShowDrives(m_showDrives);
+  m_places->setShowNetwork(m_showNetwork);
   m_places->setOpenCallback([this](const luciole::Location& location) {
     m_page.setActionMessage({});
     m_page.browser().open(location);
+    dismissDrawer();
     m_page.dispatcher().setFocus(m_page.fileList()->focusArea());
   });
   m_places->setContextCallback([this](const luciole::Bookmark& bookmark, float x, float y) {
@@ -164,21 +184,17 @@ void SidebarController::configureCallbacks() {
 
 void SidebarController::openDrive(const std::string& key) {
   m_page.setActionMessage({});
-  m_drives.mount(
-      key, [this, lifetime = std::weak_ptr(m_lifetime)](std::optional<luciole::Location> root, std::string error) {
-        if (lifetime.expired()) {
-          return;
-        }
-        if (!root) {
-          m_page.actionError(
-              error.empty() ? "Could not mount the drive." : std::format("Could not mount the drive: {}", error)
-          );
-          return;
-        }
-        m_page.browser().open(*root);
-        m_page.dispatcher().setFocus(m_page.fileList()->focusArea());
-      }
-  );
+  m_page.browser().openDrive(m_drives, key, [this, lifetime = std::weak_ptr(m_lifetime)](std::string error) {
+    if (lifetime.expired()) {
+      return;
+    }
+    if (!error.empty()) {
+      m_page.actionError(std::format("Could not mount the drive: {}", error));
+      return;
+    }
+    m_page.dispatcher().setFocus(m_page.fileList()->focusArea());
+  });
+  dismissDrawer();
 }
 
 void SidebarController::removeDrive(const std::string& key) {
@@ -259,7 +275,7 @@ void SidebarController::openDriveMenu(const std::string& key, float x, float y) 
   if (drive == nullptr) {
     return;
   }
-  std::vector<ContextMenuControlEntry> entries{{.id = 1, .label = drive->root ? "Open" : "Mount and open"}};
+  std::vector<ContextMenuControlEntry> entries{{.id = 1, .label = drive->root ? "Open" : "Mount and Open"}};
   if (drive->removal != luciole::DriveRemoval::None) {
     entries.push_back({.id = 2, .label = std::string(luciole::driveRemovalLabel(drive->removal))});
   }
@@ -358,11 +374,32 @@ std::unique_ptr<Node> SidebarController::buildResizeHandle() {
 }
 
 void SidebarController::detach() {
-  m_detachedSidebar = ui::row(
-      {.align = FlexAlign::Stretch, .gap = kGapInset}, m_places->parent()->removeChild(m_places),
-      m_sidebarResize->parent()->removeChild(m_sidebarResize)
+  auto panel = ui::row(
+      {.out = &m_sidebarPanel, .align = FlexAlign::Stretch, .gap = kGapInset, .participatesInLayout = false},
+      m_places->parent()->removeChild(m_places), m_sidebarResize->parent()->removeChild(m_sidebarResize)
   );
+  m_detachedSidebar = std::make_unique<Node>();
+  m_detachedSidebar->setClipChildren(true);
   m_sidebarBundle = m_detachedSidebar.get();
+  auto scrim = ui::inputArea(
+      {.out = &m_drawerScrim,
+       .acceptedButtons = ~0U,
+       .focusable = false,
+       .tabStop = false,
+       .participatesInLayout = false,
+       .onPress =
+           [this](const InputArea::PointerData& pointer) {
+             if (pointer.pressed) {
+               dismissDrawer();
+             }
+           },
+       .onAxisHandler = [](const auto&) { return true; }}
+  );
+  scrim->addChild(ui::box({.out = &m_scrimFill, .fill = colorSpecFromRole(ColorRole::Scrim)}));
+  m_scrimFill->setHitTestVisible(false);
+  m_sidebarBundle->addChild(std::move(scrim));
+  panel->setZIndex(1);
+  m_sidebarBundle->addChild(std::move(panel));
   m_sidebarBundle->setAnimationManager(&m_animations);
 }
 
@@ -389,6 +426,26 @@ void SidebarController::showDropLine(Renderer& renderer, std::size_t slot) {
 void SidebarController::sync(const std::optional<luciole::Location>& location) {
   m_places->setShowHidden(m_page.browser().model().filter().showHidden);
   m_places->sync(location);
+  if (m_trashQueryLocation != location) {
+    dismissDrawer();
+    m_trashQueryLocation = location;
+    refreshTrashAvailability();
+  }
+}
+
+void SidebarController::refreshTrashAvailability() {
+  const std::weak_ptr<int> lifetime = m_lifetime;
+  m_trashAvailability.query([this, lifetime](auto count) {
+    if (!lifetime.expired() && count) {
+      m_places->setTrashFull(*count > 0);
+    }
+  });
+}
+
+void SidebarController::refreshTrashAvailabilityAfterJob(luciole::JobId jobId) {
+  if (m_trashJobsRefreshed.insert(jobId).second) {
+    refreshTrashAvailability();
+  }
 }
 
 void SidebarController::onFrame() {
@@ -420,10 +477,15 @@ std::optional<InputDispatcher::TabFocusSnapshot> SidebarController::invalidate()
 }
 
 void SidebarController::layout() {
-  m_places->setVisible(m_showSidebar);
-  m_places->setParticipatesInLayout(m_showSidebar);
-  m_sidebarResize->setVisible(m_showSidebar);
-  m_sidebarResize->setParticipatesInLayout(m_showSidebar);
+  const bool show = visible() || m_reveal > 0;
+  m_places->setVisible(show);
+  m_places->setParticipatesInLayout(show);
+  m_sidebarResize->setVisible(visible() && !m_state.compact());
+  m_sidebarResize->setParticipatesInLayout(visible() && !m_state.compact());
+  m_sidebarPanel->setExcludeSubtreeFromTabOrder(!visible());
+  m_toggle->setVisible(m_state.compact());
+  m_toggle->setParticipatesInLayout(m_state.compact());
+  m_toggle->setSelected(drawerOpen());
   const float sidebarWidth = static_cast<float>(std::min(m_sidebarWidth, maximumWidth()));
   m_places->setMinWidth(sidebarWidth);
   m_places->setMaxWidth(sidebarWidth);
@@ -439,10 +501,13 @@ void SidebarController::restoreFocus(std::optional<InputDispatcher::TabFocusSnap
   }
   if (m_restorePlaceFocus && !covered) {
     const auto location = *std::exchange(m_restorePlaceFocus, std::nullopt);
-    if (m_showSidebar) {
+    if (visible()) {
       if (auto* area = m_places->focusArea(location)) {
         m_page.dispatcher().setFocus(area);
       }
     }
+  }
+  if (!covered) {
+    focusDrawer();
   }
 }

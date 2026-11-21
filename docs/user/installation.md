@@ -4,6 +4,8 @@ Luciole needs a Wayland session with EGL/OpenGL ES support. Neither the Noctalia
 
 Prefer a distribution package when one is available; it provides the simplest installation and upgrade path. Otherwise, build from source as described below. Package maintainers will find dependencies and install layout in [PACKAGING.md](../../PACKAGING.md).
 
+**Trash and remote folders require GVfs.** Install and enable your distribution's GIO/GVfs services and the backends for SFTP/SSH, SMB or WebDAV as needed, with a working session D-Bus connection. An SSH client alone does not provide SFTP browsing. Without the relevant backend, a remote address can fail with **Operation not supported** before a login prompt appears. See [network folders](browsing.md#network-folders) for connection examples and troubleshooting, and the distribution-specific setup below.
+
 ## Arch Linux
 
 [`luciole-git`](https://aur.archlinux.org/packages/luciole-git) is available in the AUR and builds the latest development version. Install it with an AUR helper such as `paru` or `yay`:
@@ -15,6 +17,207 @@ yay -S luciole-git
 ```
 
 Optional helpers for video, PDF and archive support and network locations are listed as optional dependencies; see [optional features](#optional-features).
+
+## Debian and Ubuntu
+
+The NickH APT repository provides Luciole for Debian-based distributions.
+
+### Install the repository signing key
+
+```sh
+wget https://pkg.noctalia.dev/deb/nickh-archive-keyring.deb
+sudo dpkg -i nickh-archive-keyring.deb
+```
+
+### Add the repository
+
+Choose the source matching your distribution:
+
+```sh
+# Debian Trixie
+sudo wget -O /etc/apt/sources.list.d/noctalia-trixie.sources \
+  https://pkg.noctalia.dev/deb/noctalia-trixie.sources
+
+# Debian Sid
+sudo wget -O /etc/apt/sources.list.d/noctalia-unstable.sources \
+  https://pkg.noctalia.dev/deb/noctalia-unstable.sources
+
+# Ubuntu 26.04
+sudo wget -O /etc/apt/sources.list.d/noctalia-resolute.sources \
+  https://pkg.noctalia.dev/deb/noctalia-resolute.sources
+
+# Ubuntu 26.10
+sudo wget -O /etc/apt/sources.list.d/noctalia-stonking.sources \
+  https://pkg.noctalia.dev/deb/noctalia-stonking.sources
+```
+
+### Install Luciole
+
+Choose the command matching your distribution:
+
+```sh
+sudo apt update
+
+# Debian Trixie
+sudo apt install -t trixie-backports luciole
+
+# Debian Sid and Ubuntu 26.04 and 26.10
+sudo apt install luciole
+```
+
+The repository provides `amd64` and `arm64` packages only. For Trash and network locations, install `gvfs` and the backends you need, such as `gvfs-backends`; see [optional features](#optional-features).
+
+## NixOS
+
+The flake provides a package, NixOS, Home Manager and hjem modules, and a pinned development environment for `x86_64-linux` and `aarch64-linux`. Enable the `nix-command` and `flakes` experimental features in your Nix configuration before using the commands below.
+
+### GVfs for Trash and remote folders
+
+On NixOS, Trash and remote folders such as `sftp://`, `ssh://`, `smb://` and WebDAV require GVfs services. Installing the Luciole package alone does not enable those services. This also applies to `nix run` and installations managed through Home Manager or hjem.
+
+Add this to your **NixOS system configuration**:
+
+```nix
+services.gvfs.enable = true;
+```
+
+This is a [NixOS service option](https://github.com/NixOS/nixpkgs/blob/master/nixos/modules/services/desktops/gvfs.nix), not a Home Manager option. Rebuild your system, then restart Luciole. If the existing desktop session does not pick up the new service environment, log out and back in.
+
+### Try Luciole
+
+Run Luciole without adding it to your system configuration:
+
+```sh
+nix run github:noctalia-dev/luciole
+```
+
+To build the package and keep a local result link:
+
+```sh
+nix build github:noctalia-dev/luciole
+./result/bin/luciole
+```
+
+### Add the flake input
+
+Add Luciole to your existing `flake.nix` inputs:
+
+```nix
+{
+  inputs.luciole.url = "github:noctalia-dev/luciole";
+}
+```
+
+The module examples below use `inputs`. Pass it to NixOS modules through `specialArgs` in your existing `nixpkgs.lib.nixosSystem` call:
+
+```nix
+specialArgs = { inherit inputs; };
+```
+
+For standalone Home Manager, pass it through `extraSpecialArgs` in `home-manager.lib.homeManagerConfiguration`. With Home Manager's NixOS module, use `home-manager.extraSpecialArgs = { inherit inputs; };`.
+
+### NixOS module
+
+Import the module in your system configuration and enable Luciole:
+
+```nix
+{ inputs, ... }:
+{
+  imports = [ inputs.luciole.nixosModules.default ];
+
+  programs.luciole.enable = true;
+  services.gvfs.enable = true;
+}
+```
+
+The Luciole module installs the application system-wide. Enable GVfs separately as shown above for Trash and network locations; Luciole's modules do not enable it automatically. Optional DNS-SD discovery also needs `services.avahi.enable = true;`.
+
+Rebuild using your configuration's host name:
+
+```sh
+sudo nixos-rebuild switch --flake .#your-host
+```
+
+Alternatively, install only the package with `environment.systemPackages = [ inputs.luciole.packages.${pkgs.stdenv.hostPlatform.system}.default ];` in a module receiving `inputs` and `pkgs`, and enable `services.gvfs.enable = true;` yourself. You can omit the package list entry when using one of Luciole's modules, which installs the package for you.
+
+### Home Manager
+
+With Home Manager already configured, import Luciole's module in your home configuration:
+
+```nix
+{ inputs, ... }:
+{
+  imports = [ inputs.luciole.homeModules.default ];
+
+  programs.luciole = {
+    enable = true;
+    settings = {
+      browser = {
+        view_mode = "grid";
+        show_hidden = false;
+      };
+    };
+  };
+}
+```
+
+Apply it with your usual Home Manager switch command, or rebuild NixOS when Home Manager is integrated into the system configuration. On NixOS, set `services.gvfs.enable = true;` in the system configuration, outside `home-manager.users` or `home.nix`, even when Home Manager installs Luciole. See [GVfs setup](#gvfs-for-trash-and-remote-folders). On other distributions, install and enable the distribution's GIO/GVfs services.
+
+### hjem
+
+With hjem already configured, add Luciole's module to `hjem.extraModules` in your NixOS configuration and enable it for your user:
+
+```nix
+{ inputs, ... }:
+{
+  hjem = {
+    extraModules = [ inputs.luciole.hjemModules.default ];
+    users.your-user.programs.luciole = {
+      enable = true;
+      settings.browser.view_mode = "grid";
+    };
+  };
+
+  services.gvfs.enable = true;
+}
+```
+
+Replace `your-user` with your username, then rebuild NixOS.
+
+Both home modules accept `settings` as an attribute set, a TOML string or a path to a TOML file, and validate it at build time by default. Omitting `settings` leaves `config.toml` untouched. The declarative base lives in `~/.config/luciole/config.toml`; GUI changes remain writable in `settings.toml` and take precedence. Reset a preference in Settings to use its declarative value again. See [configuration](configuration.md#files-and-precedence).
+
+### Binary cache
+
+Pre-built binaries for Luciole are available on [Cachix](https://app.cachix.org/cache/noctalia). Add the cache to the NixOS configuration to avoid compiling them locally:
+
+> **Note:** To use the binary cache, omit `inputs.nixpkgs.follows` from the Luciole input. Overriding any of Luciole's inputs changes the derivation hash, causing cache misses.
+
+```nix
+{
+  nix.settings = {
+    extra-substituters = [ "https://noctalia.cachix.org" ];
+    extra-trusted-public-keys = [ "noctalia.cachix.org-1:pCOR47nnMEo5thcxNDtzWpOxNFQsBRglJzxWPp3dkU4=" ];
+  };
+}
+```
+
+Tracking `main` directly may pull in a commit that CI hasn't cached yet. The [`cachix`](https://github.com/noctalia-dev/luciole/tree/cachix) branch always points to the latest cached commit, so pinning to it avoids cache misses:
+
+```nix
+{
+  inputs.luciole.url = "github:noctalia-dev/luciole/cachix";
+}
+```
+
+### Updates and development
+
+Update the pinned input from your configuration directory, then apply your configuration again:
+
+```sh
+nix flake update luciole
+```
+
+For source development, run `nix develop` from a Luciole checkout, then use the [development build commands](#development-builds). [Nix packaging](../../PACKAGING.md#nix-integration) documents the wrapper and runtime integration.
 
 ## Build from source
 
@@ -28,14 +231,14 @@ Build and library dependencies:
 sudo pacman -S --needed base-devel meson just \
   wayland wayland-protocols libglvnd \
   glib2 freetype2 fontconfig cairo pango harfbuzz libxkbcommon \
-  gdk-pixbuf2 glycin librsvg libpng libarchive xz acl \
+  gdk-pixbuf2 librsvg libpng libarchive xz acl \
   tomlplusplus nlohmann-json stb
 ```
 
 Runtime services and optional helpers:
 
 ```sh
-sudo pacman -S --needed shared-mime-info gsettings-desktop-schemas dconf \
+sudo pacman -S --needed shared-mime-info glycin gsettings-desktop-schemas dconf \
   adwaita-icon-theme gvfs gvfs-smb gvfs-dnssd glib-networking \
   ffmpeg ffmpegthumbnailer poppler 7zip xdg-terminal-exec
 ```
@@ -50,14 +253,14 @@ Build and library dependencies:
 sudo dnf install gcc-c++ meson just \
   wayland-devel wayland-protocols-devel libglvnd-devel \
   glib2-devel freetype-devel fontconfig-devel cairo-devel pango-devel harfbuzz-devel libxkbcommon-devel \
-  gdk-pixbuf2-devel glycin-devel librsvg2-devel libpng-devel libarchive-devel xz-devel libacl-devel \
+  gdk-pixbuf2-devel librsvg2-devel libpng-devel libarchive-devel xz-devel libacl-devel \
   tomlplusplus-devel json-devel stb_image_resize2-devel
 ```
 
 Runtime services and optional helpers:
 
 ```sh
-sudo dnf install shared-mime-info gsettings-desktop-schemas dconf \
+sudo dnf install shared-mime-info glycin-loaders gsettings-desktop-schemas dconf \
   adwaita-icon-theme gvfs gvfs-smb glib-networking \
   ffmpeg-free ffmpegthumbnailer poppler-utils 7zip xdg-terminal-exec
 ```
@@ -79,17 +282,6 @@ sudo just install release
 
 This installs under `/usr/local`; use `just configure release /usr` before building to choose another prefix. To uninstall, run `sudo ninja -C build-release uninstall` from the same checkout.
 
-### Nix
-
-The flake provides a package and a pinned development environment:
-
-```sh
-nix build github:noctalia-dev/luciole
-./result/bin/luciole
-```
-
-It also exports NixOS, Home Manager and hjem modules. Home Manager and hjem can supply `programs.luciole.settings` as a declarative base; GUI preferences remain separate. See [configuration](configuration.md) and [Nix packaging](../../PACKAGING.md#nix-integration).
-
 ### Development builds
 
 Inside the source directory, `just run release` builds and starts Luciole using the source tree's assets, without installing. Do not reuse that asset override in an installed launcher. `just` lists every recipe, and [CONTRIBUTING.md](../../CONTRIBUTING.md) covers checks and code style.
@@ -102,7 +294,7 @@ luciole /path/to/folder
 luciole 'file:///path/to/folder'
 ```
 
-Without an argument, Luciole opens Home. Supply one directory path or URI to start elsewhere. Remote locations require the corresponding installed GIO/GVfs backend and an already mounted/authenticated location. Luciole's own connect-to-server and credential dialogs are not implemented yet.
+Without an argument, Luciole opens Home. Supply one directory path or URI to start elsewhere. Remote locations require the corresponding installed GIO/GVfs backend and session services. Luciole connects when you open an unmounted location and presents the provider's login or confirmation requests. See [network folders](browsing.md#network-folders) for SFTP addresses, requirements and troubleshooting. A separate connect-to-server address form is still planned.
 
 Every window runs in one Luciole process. Starting `luciole` while it is already running opens a new window in that process, so additional windows cost far less memory than separate instances. A relative path names a folder under the directory where the command ran. The process exits when its last window closes.
 
@@ -112,4 +304,4 @@ Installing Luciole does not automatically make it the default file manager.
 
 ## Optional features
 
-Image format coverage depends on installed Glycin loaders. Video/audio thumbnails and metadata need FFmpeg; PDF thumbnails and metadata need Poppler utilities. Encrypted 7z input needs a system 7-Zip executable. Terminal actions need `xdg-terminal-exec` and a suitable terminal. Trash and mounted network locations need the appropriate GIO/GVfs services. Missing helpers leave ordinary local browsing available; [Packaging](../../PACKAGING.md#runtime-integration-and-helpers) lists the full requirements.
+Image format coverage depends on the installed GdkPixbuf image loaders (Glycin loaders when GdkPixbuf is built with Glycin). Video/audio thumbnails and metadata need FFmpeg; PDF thumbnails and metadata need Poppler utilities. Encrypted 7z input needs a system 7-Zip executable. Terminal actions need `xdg-terminal-exec` and a suitable terminal. Trash and mounted network locations need the appropriate GIO/GVfs services. Missing helpers leave ordinary local browsing available; [Packaging](../../PACKAGING.md#runtime-integration-and-helpers) lists the full requirements.

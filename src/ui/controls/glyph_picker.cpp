@@ -149,7 +149,7 @@ GlyphPicker::GlyphPicker(std::function<void()> requestTooltipUpdate) {
   luciole::applyDialogStyle(*this);
   addChild(
       luciole::dialogHeader(
-          "Choose icon", "apps",
+          "Choose Icon", "apps",
           [this] {
             if (m_onCancel) {
               m_onCancel();
@@ -161,7 +161,7 @@ GlyphPicker::GlyphPicker(std::function<void()> requestTooltipUpdate) {
 
   m_adapter = std::make_unique<GlyphGridAdapter>();
   m_categoryOptions.reserve(m_adapter->categories().size() + 1);
-  m_categoryOptions.emplace_back("All categories");
+  m_categoryOptions.emplace_back("All Categories");
   m_categoryOptions.insert(m_categoryOptions.end(), m_adapter->categories().begin(), m_adapter->categories().end());
   addChild(
       ui::row(
@@ -223,7 +223,7 @@ GlyphPicker::GlyphPicker(std::function<void()> requestTooltipUpdate) {
           },
           ui::button({
               .out = &m_resetButton,
-              .text = "Reset to default",
+              .text = "Reset to Default",
               .variant = ButtonVariant::Ghost,
               .onClick =
                   [this] {
@@ -246,7 +246,7 @@ GlyphPicker::GlyphPicker(std::function<void()> requestTooltipUpdate) {
           }),
           ui::button({
               .out = &m_applyButton,
-              .text = "Use icon",
+              .text = "Use Icon",
               .variant = ButtonVariant::Primary,
               .minWidth = 88.0F,
               .onClick = [this] {
@@ -279,7 +279,7 @@ GlyphPicker::~GlyphPicker() {
 
 void GlyphPicker::setTitle(std::string_view title) {
   if (m_title != nullptr) {
-    m_title->setText(title.empty() ? "Choose icon" : std::string(title));
+    m_title->setText(title.empty() ? "Choose Icon" : std::string(title));
   }
 }
 

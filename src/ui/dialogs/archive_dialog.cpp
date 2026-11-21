@@ -26,7 +26,7 @@ ArchiveDialog::ArchiveDialog(
   scroll->content()->setAlign(FlexAlign::Stretch);
   auto body = ui::column({.align = FlexAlign::Stretch, .gap = Style::spaceSm});
   if (compress) {
-    body->addChild(ui::label({.text = "Archive name"}));
+    body->addChild(ui::label({.text = "Archive Name"}));
     body->addChild(ui::input({.out = &m_name, .value = std::move(name), .onSubmit = [this](const std::string&) {
                                 this->submit();
                               }}));
@@ -58,7 +58,7 @@ ArchiveDialog::ArchiveDialog(
         )
     );
   }
-  body->addChild(ui::label({.text = compress ? "Destination folder" : "New output folder"}));
+  body->addChild(ui::label({.text = compress ? "Destination Folder" : "New Output Folder"}));
   body->addChild(
       ui::input({.out = &m_destination, .value = std::move(destination), .onSubmit = [this](const std::string&) {
                    this->submit();
@@ -80,7 +80,7 @@ ArchiveDialog::ArchiveDialog(
     section->addChild(ui::input({.out = &m_password, .passwordMode = true, .onSubmit = [this](const std::string&) {
                                    this->submit();
                                  }}));
-    section->addChild(ui::label({.text = "Confirm password"}));
+    section->addChild(ui::label({.text = "Confirm Password"}));
     section->addChild(ui::input({.out = &m_confirmation, .passwordMode = true, .onSubmit = [this](const std::string&) {
                                    this->submit();
                                  }}));
@@ -149,7 +149,7 @@ ArchivePasswordDialog::ArchivePasswordDialog(
   setDirection(FlexDirection::Vertical);
   setAlign(FlexAlign::Stretch);
   luciole::applyDialogStyle(*this);
-  addChild(luciole::dialogHeader("Archive password", "lock", cancel));
+  addChild(luciole::dialogHeader("Archive Password", "lock", cancel));
   addChild(ui::label({.text = std::move(name), .maxLines = 2, .configure = [](Label& label) {
                         label.setUseMarkup(false);
                       }}));

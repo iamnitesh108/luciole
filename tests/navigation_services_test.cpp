@@ -150,9 +150,16 @@ namespace {
     GError* error = g_error_new_literal(G_IO_ERROR, G_IO_ERROR_NOT_MOUNTED, "Not mounted");
     TEST_CHECK(luciole::fileError(*error).kind == luciole::FileErrorKind::NotMounted);
     g_error_free(error);
+    const luciole::FileError unsupported{luciole::FileErrorKind::Unsupported, "Provider-specific error"};
+    TEST_CHECK(luciole::directoryOpenError(native, unsupported) == unsupported);
+    const auto remote = luciole::Location::fromUri("luciole-missing-provider://example.invalid/");
+    const luciole::FileError denied{luciole::FileErrorKind::Denied, "Access denied"};
+    TEST_CHECK(luciole::directoryOpenError(remote, denied) == denied);
+    TEST_CHECK(luciole::directoryOpenError(luciole::Location::trash(), unsupported) == unsupported);
   }
   void remoteMountChecks(const std::string& uri, const std::string& mode) {
-    TEST_CHECK(uri.starts_with("smb://127.0.0.1:"));
+    const bool sftp = uri.starts_with("sftp://fixture@192.0.2.1:") || uri.starts_with("ssh://fixture@192.0.2.1:");
+    TEST_CHECK(sftp || uri.starts_with("smb://127.0.0.1:"));
     Pump pump;
     auto browser = std::make_unique<luciole::BrowserController>(luciole::SortOptions{}, true);
     const auto target = luciole::Location::fromUri(uri);
@@ -165,7 +172,7 @@ namespace {
       const luciole::GErrorPtr held(error);
       TEST_CHECK(!info && error && g_error_matches(error, G_IO_ERROR, G_IO_ERROR_NOT_MOUNTED));
     }
-    unsigned prompts = 0;
+    unsigned prompts = 0, passwords = 0;
     browser->setChangedCallback([&] {
       auto* interaction = browser->mountInteraction();
       if (!interaction || !interaction->prompt()) {
@@ -173,19 +180,28 @@ namespace {
       }
       ++prompts;
       const auto id = interaction->prompt()->id;
-      TEST_CHECK(prompts <= 3);
+      TEST_CHECK(prompts <= 5);
       if (mode == "cancel") {
         interaction->cancel();
       } else if (mode == "navigate") {
         browser->open(luciole::Location::fromPath("/tmp"));
       } else if (mode == "destroy") {
         browser.reset();
+      } else if (mode == "reject") {
+        TEST_CHECK(sftp && !interaction->prompt()->password && interaction->prompt()->choices.size() == 2);
+        TEST_CHECK(interaction->choose(id, 1));
+      } else if (!interaction->prompt()->password) {
+        TEST_CHECK(sftp && interaction->prompt()->choices.size() == 2);
+        TEST_CHECK(interaction->choose(id, 0));
       } else {
+        ++passwords;
+        const auto* const password = sftp ? "fixture-pass" : "password";
         TEST_CHECK(interaction->answer(
             id,
             mode == "guest" ? luciole::MountCredentials{"", "", "", true}
                             : luciole::MountCredentials{
-                                  "lysec", "WORKGROUP", prompts == 1 && mode == "retry" ? "wrong" : "password", false
+                                  sftp ? "fixture" : "lysec", sftp ? "" : "WORKGROUP",
+                                  passwords == 1 && mode == "retry" ? "wrong" : password, false
                               }
         ));
       }
@@ -203,6 +219,10 @@ namespace {
       TEST_CHECK(browser->model().snapshot().status == luciole::DirectoryStatus::Cancelled && prompts == 1);
     } else if (mode == "navigate") {
       TEST_CHECK(browser->model().snapshot().location == luciole::Location::fromPath("/tmp") && prompts == 1);
+    } else if (mode == "reject") {
+      TEST_CHECK(
+          browser->model().snapshot().status == luciole::DirectoryStatus::Error && prompts == 1 && passwords == 0
+      );
     } else {
       if (mode == "server") {
         const auto& server = browser->model().snapshot();
@@ -227,9 +247,16 @@ namespace {
           snapshot.status == luciole::DirectoryStatus::Ready && (mode == "server" || snapshot.location == target)
       );
       TEST_CHECK(std::ranges::any_of(snapshot.entries, [](const auto& entry) { return entry.name == "fixture.txt"; }));
-      TEST_CHECK(mode != "retry" || prompts == 2);
+      TEST_CHECK(mode != "retry" || passwords == 2);
+      TEST_CHECK(mode != "key" || passwords == 0);
+      if (sftp) {
+        const luciole::FileError unsupported{luciole::FileErrorKind::Unsupported, "Provider-specific error"};
+        TEST_CHECK(luciole::directoryOpenError(target, unsupported) == unsupported);
+      }
     }
-    std::println("SMB mount {} checks passed ({} prompts)", mode, prompts);
+    std::println(
+        "{} mount {} checks passed ({} prompts, {} passwords)", sftp ? "SFTP" : "SMB", mode, prompts, passwords
+    );
   }
   void identityChecks() {
     const luciole::GioPtr<GFileInfo> info(g_file_info_new());
@@ -380,7 +407,7 @@ namespace {
   }
 } // namespace
 int main(int argc, char** argv) {
-  if (argc == 4 && std::string_view(argv[1]) == "--smb") {
+  if (argc == 4 && (std::string_view(argv[1]) == "--smb" || std::string_view(argv[1]) == "--sftp")) {
     remoteMountChecks(argv[2], argv[3]);
     return 0;
   }

@@ -11,9 +11,14 @@
 #include <fcntl.h>
 #include <filesystem>
 #include <fstream>
+#include <linux/fs.h>
 #include <print>
+#include <sched.h>
 #include <sys/inotify.h>
+#include <sys/ioctl.h>
+#include <sys/mount.h>
 #include <sys/stat.h>
+#include <sys/wait.h>
 #include <thread>
 #include <unistd.h>
 
@@ -612,8 +617,70 @@ namespace {
     TEST_CHECK(cancelled ? !service.snapshot().receipt : service.snapshot().receipt != nullptr);
     TEST_CHECK(std::distance(fs::directory_iterator(f.root), fs::directory_iterator{}) == count);
   }
+  void caseOnlyRename(const fs::path& root) {
+    const int dir = ::open(root.c_str(), O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+    int flags = 0;
+    // musl declares ioctl(int, int, ...) and FS_IOC_GETFLAGS exceeds INT_MAX; the kernel reads the low 32 bits.
+    TEST_CHECK(dir >= 0 && ::ioctl(dir, static_cast<int>(FS_IOC_GETFLAGS), &flags) == 0);
+    flags |= FS_CASEFOLD_FL;
+    TEST_CHECK(::ioctl(dir, FS_IOC_SETFLAGS, &flags) == 0 && ::close(dir) == 0);
+    write(root / "a.txt", "A");
+    write(root / "b.txt", "B");
+    TEST_CHECK(fs::exists(root / "A.TXT"));
+    Pump pump;
+    S service;
+    pump.prepare(service, {entry(root / "a.txt"), entry(root / "b.txt")});
+    luciole::BatchRenameOptions o;
+    o.mode = luciole::BatchRenameMode::Replace;
+    o.find = "a";
+    o.replacement = "A";
+    pump.preview(service, o);
+    TEST_CHECK(service.snapshot().canApply);
+    pump.apply(service);
+    TEST_CHECK(service.snapshot().phase == P::Finished);
+    std::vector<std::string> names;
+    for (const auto& item : fs::directory_iterator(root)) {
+      names.push_back(item.path().filename());
+    }
+    std::ranges::sort(names);
+    TEST_CHECK((names == std::vector<std::string>{"A.txt", "b.txt"}) && read(root / "A.txt") == "A");
+  }
+  // A casefold tmpfs is mountable only inside a private user namespace; 77 means unavailable.
+  int caseOnlyRenameChild() {
+    Fixture f;
+    const auto uid = std::to_string(::getuid());
+    const auto gid = std::to_string(::getgid());
+    if (::unshare(CLONE_NEWUSER | CLONE_NEWNS) != 0) {
+      return 77;
+    }
+    write("/proc/self/setgroups", "deny");
+    write("/proc/self/uid_map", "0 " + uid + " 1");
+    write("/proc/self/gid_map", "0 " + gid + " 1");
+    if (::mount("tmpfs", f.root.c_str(), "tmpfs", 0, "casefold") != 0) {
+      return 77;
+    }
+    caseOnlyRename(f.root);
+    TEST_CHECK(::umount2(f.root.c_str(), MNT_DETACH) == 0);
+    return 0;
+  }
+  // Runs in a child forked before any threads exist, since unshare(CLONE_NEWUSER) needs a single thread.
+  void caseInsensitiveFolder() {
+    const pid_t child = ::fork();
+    TEST_CHECK(child >= 0);
+    if (child == 0) {
+      std::exit(caseOnlyRenameChild());
+    }
+    int status = 0;
+    TEST_CHECK(::waitpid(child, &status, 0) == child && WIFEXITED(status));
+    if (WEXITSTATUS(status) == 77) {
+      std::println("Case-insensitive folder checks unavailable: cannot mount a casefold tmpfs");
+    } else {
+      TEST_CHECK(WEXITSTATUS(status) == 0);
+    }
+  }
 } // namespace
 int main() {
+  caseInsensitiveFolder();
   Pump pump;
   names();
   basicAndValidation(pump);

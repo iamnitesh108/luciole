@@ -86,8 +86,8 @@ namespace {
     TEST_CHECK(value(service, "Inspected") == "5 of 5 items");
     TEST_CHECK(value(service, "Files") == "2" && value(service, "Folders") == "1");
     TEST_CHECK(value(service, "Links") == "1" && value(service, "Other") == "1");
-    TEST_CHECK(value(service, "File/link size") == "13 bytes");
-    TEST_CHECK(value(service, "Folder contents") == "Not counted");
+    TEST_CHECK(value(service, "File/Link Size") == "13 bytes");
+    TEST_CHECK(value(service, "Folder Contents") == "Not counted");
     TEST_CHECK(value(service, "Permissions") == "Mixed");
     TEST_CHECK(!value(service, "Owner").empty() && value(service, "Owner") != "Mixed");
     TEST_CHECK(!value(service, "Accessed").empty());
@@ -98,7 +98,7 @@ namespace {
     wait([&] { return !service.busy(); });
     TEST_CHECK(value(service, "Inspected") == "3 of 5 items");
     TEST_CHECK(value(service, "Unavailable").starts_with("2 "));
-    TEST_CHECK(value(service, "File/link size").starts_with("At least "));
+    TEST_CHECK(value(service, "File/Link Size").starts_with("At least "));
     TEST_CHECK(value(service, "Owner").contains("some unknown"));
     fs::create_directory(root / "other");
     std::ofstream(root / "other" / "child.txt") << 'a';
@@ -115,7 +115,7 @@ namespace {
     service.show(many);
     wait([&] { return !service.busy(); });
     TEST_CHECK(value(service, "Inspected") == "4096 of 4100 items");
-    TEST_CHECK(!value(service, "Inspection limit").empty());
+    TEST_CHECK(!value(service, "Inspection Limit").empty());
     service.show(many);
     service.clear();
     wait([&] { return !service.busy(); });

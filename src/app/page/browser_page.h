@@ -27,6 +27,7 @@
 #include "app/page/submenu_controller.h"
 #include "app/page/transfer_controller.h"
 #include "app/page/trash_controller.h"
+#include "app/window_move_gesture.h"
 #include "app/workspace_command.h"
 #include "app/workspace_layout.h"
 #include "browser/action_registry.h"
@@ -104,6 +105,8 @@ public:
   ~BrowserPage();
 
   void iconThemeChanged();
+  // The system font changed: rebuild the file views and lay out the window and its popup again.
+  void fontChanged();
 
   bool initialize(const std::optional<std::string>& initialLocation);
 
@@ -146,6 +149,10 @@ public:
   void focusChanged(InputArea* focused);
   void windowFocusChanged(bool entered);
   bool completeLocationOnTab(std::uint32_t modifiers);
+  bool sidebarKey(const KeyboardEvent& event);
+  bool sidebarOverlays(float x, float y) const;
+  void prepareSidebar(float width);
+  void arrangeSidebar(Renderer& renderer, float top, float height);
   void stampFocusKeys(Node& node);
   void duplicateFrom(BrowserPage& source);
   void open(const luciole::Location& location);
@@ -261,12 +268,15 @@ private:
   MillerView& millerView() override;
   luciole::ViewMode viewMode() const override;
   float gridIconSize() const override;
+  float rowIconSize() const override;
   void captureViewAnchor() override;
   void resetFileView() override;
 
   void operationProgressTick();
 
   void showContaining(const luciole::Location& location);
+  // Opens the folder holding `link`'s target and selects it, once a worker has read the link.
+  void showLinkTarget(const luciole::Location& link);
 
   void applySettings(const luciole::BrowserSettings& settings, bool force) override;
 
@@ -282,8 +292,7 @@ private:
   void applySort(luciole::SortOptions options);
   void changeSort(luciole::SortOptions options);
   void changeGridZoom(int requested);
-  // List and Columns rows; 0 keeps the density's size.
-  int rowIconSize() const;
+  // List and Columns rows; 0 keeps the view's default size.
   void changeRowIconSize(int size);
   // The current view's step in its icon sizes.
   int zoomStep() const;
@@ -399,7 +408,7 @@ private:
   CreateController m_createController{*this, m_templates, m_submenus};
   MountController m_mountController{*this};
   ArchiveController m_archiveController{*this, m_launcher, m_icons, m_connection};
-  TransferController m_transferController{*this, [this] { operationProgressTick(); }};
+  TransferController m_transferController{*this, [this] { operationProgressTick(); }, m_createController};
   OperationsController m_operations{*this, m_hub, [this](luciole::JobId id, bool retry) {
                                       if (m_operationRequest) {
                                         m_operationRequest(id, retry);
@@ -408,6 +417,7 @@ private:
   MenuController m_menuController{
       *this,
       m_pins,
+      m_preferences,
       m_transferController,
       m_terminal,
       m_siblingCompletion,
@@ -466,6 +476,7 @@ private:
   ChooserHooks m_chooser;
 
   Flex* m_titlebar = nullptr;
+  WindowMoveGesture m_titlebarMove;
   Flex* m_paneContentFrame = nullptr;
   VirtualGridView* m_list = nullptr;
   Segmented* m_viewSwitch = nullptr;
@@ -475,6 +486,7 @@ private:
   Button* m_up = nullptr;
   Button* m_newFolderButton = nullptr;
   Button* m_sortButton = nullptr;
+  Button* m_emptyTrashButton = nullptr;
   bool m_browserDirty = true;
   std::unique_ptr<PopupSurface> m_popupSurface;
   PopupDismiss m_popupDismiss = PopupDismiss::OutsideClick;

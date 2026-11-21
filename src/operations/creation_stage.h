@@ -5,6 +5,7 @@
 
 #include <cstdint>
 #include <string>
+#include <string_view>
 
 namespace luciole {
   // Worker-owned private staging. Only a pinned item may be removed, never recursively.
@@ -35,4 +36,5 @@ namespace luciole {
     Fd m_directory, m_item;
   };
   void copyCreationData(int source, int output, std::uint64_t size, const CancelToken& token);
+  void writeCreationData(std::string_view data, int output, const CancelToken& token);
 } // namespace luciole

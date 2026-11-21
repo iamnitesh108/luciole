@@ -8,6 +8,8 @@
 
 Luciole owns decoration negotiation, clipboard/drop transport, cursor fallback, browser composition and selection contours. Common widgets use the actual shared Button, Stepper, Select, Toggle, ScrollView and virtual-grid controls. A file-manager preference binding belongs here, while a generic widget correction belongs upstream.
 
+The compositor's fractional-scale preference belongs to one Wayland surface. Output updates refresh the output scale seed without clearing that preference; subsequent preferred-scale events replace it. Destroying the Wayland surface clears the preference before the object can create another surface.
+
 ## UI phases
 
 Preserve PrepareFrame → Update → Layout → Render.
@@ -46,7 +48,11 @@ Video generation probes duration, samples the keyframe nearest 10% (keyframe-onl
 
 Layout requests physical pixels, including display scale. Grid thumbnails cannot replace the larger preview request. Keep an already ready image visible until a higher-resolution replacement uploads, preserve aspect ratio, and retain source dimensions separately from decoded/output dimensions. Source revisions must invalidate same-size edits without flushing unrelated images.
 
-Preview and Properties share [asynchronous metadata](../../src/thumbnails/preview_metadata.h). The preview presents essential content facts; Properties can expose technical and permission information. Recursive folder totals are a separate explicit Properties service, never a side effect of selecting an entry.
+Preview and Properties share [asynchronous metadata](../../src/thumbnails/preview_metadata.h). The preview presents essential content facts; Properties can expose technical and permission information. Selecting a single folder starts the shared [folder totals service](../../src/fs/folder_totals.h) once for that selection: the preview shows its size and its file and folder counts, a new selection supersedes the running walk, and a running walk never marks the page busy. Properties keeps the explicit inspection card with its Stop button and detailed partial-result notes.
+
+Native symlink metadata retains the no-follow query for the link's own facts and adds the literal stored target and filesystem-resolved absolute target on that same worker. Resolution preserves symlink/`..` ordering, reports missing/inaccessible/looping targets and never enumerates the target. The link's inode and change revision are rechecked before publishing; cancellation and superseded-request guards remain. Resolution is observational, with no target lease or live target monitoring. Opening links uses a separate following type query; native `stat` errors and a provider's unresolved symlink type prevent default-handler dispatch. Permission and transfer services keep their existing no-follow policies.
+
+This follows [Nautilus 49's single-link Properties field](https://raw.githubusercontent.com/GNOME/nautilus/gnome-49/src/nautilus-properties-window.c), inspected as a primary-source comparison. Luciole additionally separates the stored target from the final native path. [GIO documents](https://docs.gtk.org/gio/method.File.query_info.html) that a following query can still return the link itself when its target does not exist; opening must handle that result explicitly. No live comparison or broader remote-target metadata support is claimed.
 
 ## Shared video decoration
 

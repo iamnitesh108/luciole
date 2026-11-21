@@ -932,7 +932,7 @@ struct luciole::DirectorySession::State : std::enable_shared_from_this<State> {
       for (std::size_t i = 0; i < scan->entries.size(); ++i) {
         auto& entry = scan->entries[i];
         if (entry.symlink) {
-          entry.linksToDirectory = add(i, entry.name);
+          entry.setLinksToDirectory(add(i, entry.name));
         }
       }
     }
@@ -1161,7 +1161,7 @@ struct luciole::DirectorySession::State : std::enable_shared_from_this<State> {
           request->scan->enumerator.reset(g_file_enumerate_children_finish(G_FILE(source), result, &error));
           if (const auto state = request->state.lock(); state && state->scan == request->scan) {
             if (error != nullptr) {
-              state->complete(fileError(*error));
+              state->enumerationFailed(fileError(*error));
             } else {
               state->nextBatch();
             }
@@ -1169,6 +1169,21 @@ struct luciole::DirectorySession::State : std::enable_shared_from_this<State> {
           g_clear_error(&error);
         },
         new Request{.state = weak_from_this(), .scan = scan}
+    );
+  }
+
+  void enumerationFailed(FileError error) {
+    if (error.kind != FileErrorKind::Unsupported || scan->local || scan->trash) {
+      complete(std::move(error));
+      return;
+    }
+    runJob<FileError>(
+        [location = *snapshot.location, error = std::move(error)] { return directoryOpenError(location, error); },
+        [weak = weak_from_this(), requested = scan](JobResult<FileError> result) {
+          if (const auto state = weak.lock(); state && state->scan == requested) {
+            state->complete(result ? std::move(*result) : std::move(result.error()));
+          }
+        }
     );
   }
 

@@ -114,7 +114,9 @@ namespace {
       GVariantBuilder options;
       g_variant_builder_init(&options, G_VARIANT_TYPE_VARDICT);
       g_variant_builder_add(&options, "{sv}", "accept_label", g_variant_new_string(text));
-      GVariant* parameters = g_variant_ref_sink(openFileParameters("/r", g_variant_builder_end(&options)));
+      GVariant* parameters = g_variant_ref_sink(
+          openFileParameters("/org/freedesktop/portal/desktop/request/1_1/label", g_variant_builder_end(&options))
+      );
       auto request = luciole::parseFileChooserRequest(luciole::FileChooserMode::Open, parameters);
       g_variant_unref(parameters);
       return request.acceptLabel;
@@ -122,6 +124,15 @@ namespace {
     TEST_CHECK(label("_Open") == "Open");
     TEST_CHECK(label("Save__as_x") == "Save_asx");
     TEST_CHECK(label("Plain") == "Plain");
+    GVariant* foreign = g_variant_ref_sink(openFileParameters("/org/freedesktop/portal/desktop", emptyOptions()));
+    bool rejected = false;
+    try {
+      luciole::parseFileChooserRequest(luciole::FileChooserMode::Open, foreign);
+    } catch (const std::runtime_error&) {
+      rejected = true;
+    }
+    g_variant_unref(foreign);
+    TEST_CHECK(rejected);
   }
 
   void run() {

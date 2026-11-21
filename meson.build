@@ -42,8 +42,7 @@ gio = dependency('gio-2.0', version: '>=2.76')
 gio_unix = dependency('gio-unix-2.0', version: '>=2.76')
 curl = dependency('libcurl', version: '>=7.85')
 xml = dependency('libxml-2.0', version: '>=2.9')
-gdk_pixbuf = dependency('gdk-pixbuf-2.0', version: '>=2.44')
-glycin = dependency('glycin-2', version: '>=2.0.1')
+gdk_pixbuf = dependency('gdk-pixbuf-2.0', version: '>=2.42')
 if not cpp.has_header('stb/stb_image_resize2.h')
   error('system stb/stb_image_resize2.h is required')
 endif
@@ -139,6 +138,7 @@ fs_lib = static_library('luciole-fs',
     'src/fs/gio_interop.cpp',
     'src/fs/heap_trim.cpp',
     'src/fs/interned_text.cpp',
+    'src/fs/link_target.cpp',
     'src/fs/location.cpp',
     'src/fs/location_mount.cpp',
     'src/fs/mount_interaction.cpp',
@@ -259,7 +259,7 @@ imaging_lib = static_library('luciole-imaging',
     'src/imaging/svg_rasterizer.cpp',
   ),
   include_directories: src_inc,
-  dependencies: [fs_dep, noctalia_ui_dep, gdk_pixbuf, glycin, libpng, dependency('librsvg-2.0')],
+  dependencies: [fs_dep, noctalia_ui_dep, gdk_pixbuf, libpng, dependency('librsvg-2.0')],
 )
 imaging_dep = declare_dependency(link_with: imaging_lib, include_directories: src_inc,
   dependencies: [fs_dep, noctalia_ui_dep, gdk_pixbuf],
@@ -414,6 +414,7 @@ app = executable('luciole',
     'src/app/page/settings_controller.cpp',
     'src/app/page/shortcuts_controller.cpp',
     'src/app/page/sidebar_controller.cpp',
+    'src/app/page/sidebar_drawer.cpp',
     'src/app/page/status_bar_controller.cpp',
     'src/app/page/submenu_controller.cpp',
     'src/app/page/transfer_controller.cpp',

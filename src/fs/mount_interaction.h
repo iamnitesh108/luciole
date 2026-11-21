@@ -10,12 +10,14 @@
 #include <vector>
 
 namespace luciole {
+  enum class MountPurpose : std::uint8_t { Network, Device };
   struct MountPrompt {
     std::uint64_t id;
     std::string message, user, domain;
     GAskPasswordFlags flags{};
     std::vector<std::string> choices;
     bool password = true;
+    MountPurpose purpose = MountPurpose::Network;
   };
   struct MountCredentials {
     std::string user, domain, password;
@@ -24,7 +26,7 @@ namespace luciole {
   // Native GIO interaction bridge. Consumers render prompts with their own controls.
   class MountInteraction {
   public:
-    MountInteraction();
+    explicit MountInteraction(MountPurpose purpose = MountPurpose::Network);
     ~MountInteraction();
     MountInteraction(const MountInteraction&) = delete;
     MountInteraction& operator=(const MountInteraction&) = delete;

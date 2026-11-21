@@ -20,6 +20,7 @@
 #include <memory>
 #include <mutex>
 #include <print>
+#include <source_location>
 #include <stdexcept>
 #include <string>
 #include <sys/stat.h>
@@ -63,10 +64,11 @@ namespace {
 
   class Pump {
   public:
-    void until(const std::function<bool()>& done) {
+    // Reports the caller on timeout, so a CI-only stall names the wait that never finished.
+    void until(const std::function<bool()>& done, std::source_location caller = std::source_location::current()) {
       const auto deadline = std::chrono::steady_clock::now() + 5s;
       while (!done()) {
-        TEST_CHECK(std::chrono::steady_clock::now() < deadline);
+        luciole::test::check(std::chrono::steady_clock::now() < deadline, "pump.until deadline", caller);
         once();
       }
     }
@@ -107,11 +109,28 @@ namespace {
     return false;
   }
 
+  // The icon GIO's local backend gives the item at path, without following a link.
+  luciole::FileIconSource gioIcon(const luciole::Location& location) {
+    const auto file = luciole::gioFile(location);
+    const luciole::GioPtr<GFileInfo> info(g_file_query_info(
+        file.get(),
+        G_FILE_ATTRIBUTE_STANDARD_NAME "," G_FILE_ATTRIBUTE_STANDARD_TYPE "," G_FILE_ATTRIBUTE_STANDARD_ICON
+                                       "," G_FILE_ATTRIBUTE_STANDARD_CONTENT_TYPE,
+        G_FILE_QUERY_INFO_NOFOLLOW_SYMLINKS, nullptr, nullptr
+    ));
+    TEST_CHECK(info);
+    return luciole::readFileIcon(info.get(), location);
+  }
+
   // Ready, with sniffed content types published.
-  void ready(Pump& pump, const DirectorySession& session) {
-    pump.until([&session] {
-      return session.snapshot().status != DirectoryStatus::Loading && !session.snapshot().contentTypesPending;
-    });
+  void
+  ready(Pump& pump, const DirectorySession& session, std::source_location caller = std::source_location::current()) {
+    pump.until(
+        [&session] {
+          return session.snapshot().status != DirectoryStatus::Loading && !session.snapshot().contentTypesPending;
+        },
+        caller
+    );
     TEST_CHECK(session.snapshot().status == DirectoryStatus::Ready);
   }
 
@@ -165,16 +184,9 @@ namespace {
       ready(pump, session);
       for (const auto& entry : session.snapshot().entries) {
         const auto location = entry.location();
-        const auto file = luciole::gioFile(location);
-        const luciole::GioPtr<GFileInfo> info(g_file_query_info(
-            file.get(),
-            G_FILE_ATTRIBUTE_STANDARD_NAME "," G_FILE_ATTRIBUTE_STANDARD_TYPE "," G_FILE_ATTRIBUTE_STANDARD_ICON
-                                           "," G_FILE_ATTRIBUTE_STANDARD_CONTENT_TYPE,
-            G_FILE_QUERY_INFO_NOFOLLOW_SYMLINKS, nullptr, nullptr
-        ));
-        TEST_CHECK(info);
-        const auto expected = luciole::readFileIcon(info.get(), location);
-        TEST_CHECK(entry.icon && *entry.icon == expected);
+        const auto expected = gioIcon(location);
+        // A link known to lead to a folder shows the folder icon instead of GIO's link icon.
+        TEST_CHECK(entry.icon && (entry.linksToDirectory || *entry.icon == expected));
         special += expected.names.front().starts_with("user-") || expected.names.front().starts_with("folder-");
         TEST_CHECK(Location::fromUri(location.uri()) == location);
         TEST_CHECK(Location::fromPath((folder / entry.name).native()) == location);
@@ -185,6 +197,10 @@ namespace {
     TEST_CHECK(entry(session, "notes.txt").icon == entry(session, "more.txt").icon);
     TEST_CHECK(entry(session, "notes.txt").icon != entry(session, "ordinary").icon);
     TEST_CHECK(entry(session, "launcher.desktop").icon->desktopFile == (home / "launcher.desktop").native());
+    session.open(Location::fromPath(profile.native()));
+    ready(pump, session);
+    pump.until([&] { return linksToDirectory(session, "docs-link"); });
+    TEST_CHECK(*entry(session, "docs-link").icon == gioIcon(Location::fromPath((home / "ordinary").native())));
   }
 
   void testContentTypes(Pump& pump) {
@@ -458,6 +474,15 @@ namespace {
     session.open(Location::fromPath((fixture.path / "plain-file").native()));
     pump.until([&session] { return session.snapshot().status == DirectoryStatus::Error; });
     TEST_CHECK(session.snapshot().error->kind == luciole::FileErrorKind::NotDirectory);
+    session.open(Location::fromUri("luciole-missing-provider://user:secret@example.invalid/folder"));
+    pump.until([&session] { return session.snapshot().status == DirectoryStatus::Error; });
+    TEST_CHECK(session.snapshot().error->kind == luciole::FileErrorKind::Unsupported);
+    const auto& message = session.snapshot().error->message;
+    TEST_CHECK(message.contains("luciole-missing-provider://") && message.contains("GIO/GVfs"));
+    TEST_CHECK(!message.contains("user") && !message.contains("secret") && !message.contains("example.invalid"));
+    session.open(fixture.location());
+    ready(pump, session);
+    TEST_CHECK(!session.snapshot().error && !session.snapshot().entries.empty());
   }
 
   // A folder that changes faster than it can be scanned still publishes, at a bounded rate.
@@ -641,7 +666,7 @@ namespace {
     TEST_CHECK(entry.details == luciole::readEntryMetadata(info.get()));
     TEST_CHECK(entry.identity() == luciole::readFileIdentity(info.get()));
     TEST_CHECK(entry.contentType == luciole::readContentType(info.get()));
-    TEST_CHECK(entry.icon && *entry.icon == luciole::readFileIcon(info.get(), location));
+    TEST_CHECK(entry.icon && (entry.linksToDirectory || *entry.icon == luciole::readFileIcon(info.get(), location)));
     const auto expected = luciole::readFileAccess(info.get());
     TEST_CHECK(entry.access.rename == expected.rename);
     TEST_CHECK(entry.access.remove == expected.remove);
@@ -685,6 +710,10 @@ namespace {
         pump.until([&] { return linksToDirectory(session, "folder-link"); });
         TEST_CHECK(!entry(session, "link").linksToDirectory && !entry(session, "broken").linksToDirectory);
         TEST_CHECK(!entry(session, "locked").linksToDirectory);
+        // A link to a folder shows the folder icon; links to files and broken links keep the link icon.
+        TEST_CHECK(*entry(session, "folder-link").icon == *entry(session, "locked").icon);
+        TEST_CHECK(*entry(session, "link").icon == gioIcon(entry(session, "link").location()));
+        TEST_CHECK(*entry(session, "broken").icon == gioIcon(entry(session, "broken").location()));
       }
     }
     // Root can retain write access after chmod, including in the CI container.
@@ -764,16 +793,18 @@ namespace {
     }
     const auto& pending = initial[pictureIndex];
     TEST_CHECK(pending.metadataPending && !pending.size && !pending.identity());
-    for (const auto index : {rawIndex, hiddenIndex, pictureIndex, brokenIndex, folderLinkIndex}) {
-      session.requestMetadata(index, initial.brief(index).id, luciole::EntryDetails::All);
-    }
+    // Requests made while a monitor rescan runs are dropped; like the view, ask again on every pass.
     pump.until([&] {
+      for (const auto index : {rawIndex, hiddenIndex, pictureIndex, brokenIndex, folderLinkIndex}) {
+        session.requestMetadata(index, initial.brief(index).id, luciole::EntryDetails::All);
+      }
       const auto& entries = session.snapshot().entries;
       return entries.known(pictureIndex) != nullptr && entries.known(folderLinkIndex) != nullptr;
     });
     const auto rich = session.snapshot().entries;
     // GIO details never report a link's target, so they keep the catalogue's.
     TEST_CHECK(rich.known(folderLinkIndex)->linksToDirectory);
+    TEST_CHECK(*rich.known(folderLinkIndex)->icon == gioIcon(fixture.location().child("folder")));
     TEST_CHECK(rich.sameCatalogue(initial) && pending.metadataPending && !initial.known(pictureIndex));
     const auto& picture = *rich.known(pictureIndex);
     TEST_CHECK(!picture.metadataPending && !picture.metadataFailed && picture.contentType == "image/png");
@@ -802,16 +833,15 @@ namespace {
     // Walking beyond the working-set limit evicts facts, not catalogue names or retained snapshots.
     for (std::size_t begin = 0; begin < initial.size(); begin += 128) {
       const auto end = std::min(begin + 128, initial.size());
-      for (auto i = begin; i < end; ++i) {
-        session.requestMetadata(i, initial.brief(i).id);
-      }
       pump.until([&] {
+        bool known = true;
         for (auto i = begin; i < end; ++i) {
           if (!session.snapshot().entries.known(i)) {
-            return false;
+            session.requestMetadata(i, initial.brief(i).id);
+            known = false;
           }
         }
-        return true;
+        return known;
       });
     }
     std::size_t retained = 0;
@@ -825,17 +855,23 @@ namespace {
     const auto beforeColumns = session.snapshot().entries;
     TEST_CHECK(beforeColumns.known(columnIndex) && beforeColumns.known(columnIndex)->queriedDetails == 0);
     TEST_CHECK(!beforeColumns.known(columnIndex)->details.owner && !beforeColumns.known(columnIndex)->details.mode);
-    session.requestMetadata(columnIndex, initial.brief(columnIndex).id, luciole::EntryDetails::Permissions);
+    // A rescan can retire queued facts. Start one explicitly and keep requesting
+    // the visible column until the new listing can serve it, just as the view does.
+    session.refresh();
+    TEST_CHECK(session.snapshot().status == DirectoryStatus::Loading);
     pump.until([&] {
+      session.requestMetadata(columnIndex, initial.brief(columnIndex).id, luciole::EntryDetails::Permissions);
       const auto* value = session.snapshot().entries.known(columnIndex);
       return value && (value->queriedDetails & luciole::EntryDetails::Permissions) != 0;
     });
     const auto* permissions = session.snapshot().entries.known(columnIndex);
     TEST_CHECK(permissions->details.mode && !permissions->details.owner && !permissions->details.group);
     TEST_CHECK(!beforeColumns.known(columnIndex)->details.mode);
-    session.requestMetadata(columnIndex, initial.brief(columnIndex).id, luciole::EntryDetails::All);
+    session.refresh();
     pump.until([&] {
-      return session.snapshot().entries.known(columnIndex)->queriedDetails == luciole::EntryDetails::All;
+      session.requestMetadata(columnIndex, initial.brief(columnIndex).id, luciole::EntryDetails::All);
+      const auto* value = session.snapshot().entries.known(columnIndex);
+      return value && value->queriedDetails == luciole::EntryDetails::All;
     });
     TEST_CHECK(session.snapshot().entries.known(columnIndex)->details.owner);
     session.refresh();
@@ -949,11 +985,13 @@ namespace {
     TEST_CHECK(session.snapshot().status == DirectoryStatus::Loading);
     ready(pump, session);
     TEST_CHECK(linksToDirectory(session, "folder-link"));
+    TEST_CHECK(*entry(session, "folder-link").icon == *entry(session, "folder").icon);
     fs::remove(fixture.path / "folder-link");
     fs::create_symlink("file", fixture.path / "folder-link");
     session.refresh();
     ready(pump, session);
     pump.until([&] { return !linksToDirectory(session, "folder-link"); });
+    TEST_CHECK(*entry(session, "folder-link").icon == gioIcon(fixture.location().child("folder-link")));
   }
 
   void testNetworkFilesystem() {

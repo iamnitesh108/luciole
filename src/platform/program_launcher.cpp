@@ -188,7 +188,9 @@ void luciole::launchProgram(
     if (terminal) {
       throwFileError(FileErrorKind::Unsupported, "Application launchers choose their own terminal behavior.");
     }
-    const auto application = terminalApplication(G_APP_INFO(program.data->application.get()), terminalCommand);
+    const auto application = terminalApplication(
+        G_APP_INFO(program.data->application.get()), terminalCommand, workingDirectory.nativePath().value_or("")
+    );
     GList* uris = nullptr;
     for (const auto& item : arguments) {
       uris = g_list_append(uris, const_cast<char*>(item.uri().c_str())); // Borrowed for this synchronous GIO call.

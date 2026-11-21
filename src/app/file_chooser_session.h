@@ -1,6 +1,7 @@
 #pragma once
 
 #include "browser/chooser_policy.h"
+#include "fs/cancel_token.h"
 #include "fs/file_filter.h"
 #include "platform/file_chooser_portal.h"
 #include "ui/controls/select_dropdown_popup.h"
@@ -67,6 +68,8 @@ private:
   // Save: answers with the destinations, or asks first when one exists.
   void save();
   void syncSave();
+  // Puts the selected item's name in the name field when saving over it makes sense.
+  void offerName(const luciole::DirectoryEntry& entry);
   void cancel();
 
   luciole::FileChooserRequest m_request;
@@ -89,10 +92,12 @@ private:
   // Save mode's name field; null otherwise.
   Input* m_name = nullptr;
   bool m_nameFocused = false;
-  // The selected file whose name was last copied into the name field.
+  // The single selected item last offered to the name field, and the lookup of its link target.
   std::optional<luciole::EntryId> m_namedFrom;
+  luciole::CancelToken m_nameLookup;
   std::optional<luciole::Location> m_folder;
   // Destinations the user was asked about; saving to exactly these again replaces them.
   std::vector<luciole::Location> m_confirm;
   std::string m_reasonText;
+  std::shared_ptr<int> m_lifetime = std::make_shared<int>(0);
 };

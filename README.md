@@ -26,6 +26,8 @@ It offers grid, list and Miller column views, tabs, split view and rich file pre
 > [!IMPORTANT]
 > Luciole is young and actively evolving. It is usable today, but settings, shortcuts and behavior may change between releases, and rough edges remain.
 
+<img width="1900" height="1256" alt="image" src="https://github.com/user-attachments/assets/398e2f25-6fe0-4595-a9ba-626f07a0632b" />
+
 ## Why Luciole?
 
 We wanted a file manager that responds as fast as we can move. Folders with thousands of files should open and scroll without a stutter, thumbnails should fill in as you go instead of freezing the view, and a second window should not cost a second application.
@@ -48,7 +50,7 @@ To understand the values and philosophy guiding the project, read our [ethos](ht
 - **Thumbnails and previews:** images, video, text and PDF pages, plus file and media metadata
 - **File operations:** copy, move, links, batch rename, folder merging, conflict choices, Trash and restoration, with [Undo and Redo](docs/user/file-operations.md#undo-and-redo)
 - **Archives:** browse, create and extract, with password prompts for [encrypted formats](docs/user/file-operations.md#archives)
-- **Places:** a customizable sidebar with shared bookmarks, mounted drives and optional folder trees
+- **Places:** an adaptive sidebar with shared bookmarks, mounted drives, LUKS unlock prompts and optional folder trees
 - **File picker:** a [portal backend](PACKAGING.md#filechooser-portal-backend) that gives every application Luciole's Open and Save dialogs; [xdg-desktop-portal-umbriel](https://github.com/noctalia-dev/xdg-desktop-portal-umbriel) selects it automatically when installed, and other desktops can enable it in `portals.conf`
 - **Desktop integration:** SFTP, SMB and WebDAV locations, Open With, terminal actions and [custom scripts](docs/user/scripts.md)
 - **Configuration:** built-in settings, live-reloaded TOML, icon themes and configurable colors

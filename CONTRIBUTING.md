@@ -47,6 +47,8 @@ Getters are the noun, without a `get` prefix: `snapshot()`, `selection()`.
 
 clang-format inserts braces around every control statement body and clang-tidy enforces the naming table for enumerators and private members.
 
+UI text matches noctalia-shell: menu items, actions, buttons, dialog titles, settings labels and choices, section and card titles, and field labels use Title Case, keeping articles, short conjunctions and short prepositions lowercase unless first or last (`Move Tab to New Window`, `Open With…`). Tooltips, placeholders, status lines, hints and messages stay in sentence case.
+
 ### Source Conventions
 
 - `src/` and `lib/` are the include roots; project includes are relative to them (`#include "app/application.h"`, `#include "ui/style.h"`).

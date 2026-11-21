@@ -14,6 +14,11 @@ namespace luciole {
     FilePayload payload;
     std::uint64_t revision;
   };
+  // Raw image bytes from a foreign clipboard offer, with the file extension of the MIME type they arrived as.
+  struct ClipboardImage {
+    std::string extension;
+    std::string bytes;
+  };
   using DropCompletion = std::function<void(bool)>;
   enum class DragAction { Copy, Move, Ask };
   struct DropOptions {
@@ -50,8 +55,11 @@ namespace luciole {
 
     bool setFiles(FilePayload payload);
     bool hasFiles() const;
+    // True while the selection offers image data Luciole can paste as a new file.
+    bool hasImage() const;
     bool isCut(const Location& location) const;
     void requestFiles(std::function<void(std::optional<ClipboardFiles>)> callback);
+    void requestImage(std::function<void(std::optional<ClipboardImage>)> callback);
     bool claimMove(std::uint64_t revision);
     void finishMove(const ClipboardFiles& selection, const std::vector<TransferResult>& results);
     // Selection notifications precede keyboard enter. Resume only after both.

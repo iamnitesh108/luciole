@@ -123,7 +123,7 @@ namespace {
         {"Folders", std::to_string(folders)},
         {"Links", std::to_string(links)},
         {"Other", std::to_string(other)},
-        {"File/link size", overflow ? "Too large to total" : (partial ? "At least " : "") + std::string(size.get())},
+        {"File/Link Size", overflow ? "Too large to total" : (partial ? "At least " : "") + std::string(size.get())},
         {"Owner", owner.text()},
         {"Group", group.text()},
         {"Permissions", mode.text()},
@@ -133,16 +133,16 @@ namespace {
         {"Created", created.text()}
     };
     if (folders) {
-      fields.emplace_back("Folder contents", "Not counted");
+      fields.emplace_back("Folder Contents", "Not counted");
     }
     if (unavailable) {
       fields.emplace_back("Unavailable", std::format("{} missing, changed or inaccessible items", unavailable));
     }
     if (unknownSizes) {
-      fields.emplace_back("Unknown sizes", std::to_string(unknownSizes));
+      fields.emplace_back("Unknown Sizes", std::to_string(unknownSizes));
     }
     if (limited) {
-      fields.emplace_back("Inspection limit", "Only the first 4096 selected items were inspected");
+      fields.emplace_back("Inspection Limit", "Only the first 4096 selected items were inspected");
     }
     return fields;
   }

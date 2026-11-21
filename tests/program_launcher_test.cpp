@@ -87,7 +87,7 @@ namespace {
   void testTerminalPolicy(Fixture& f) {
     const std::string originalPath = g_getenv("PATH");
     const auto bin = f.root / "bin";
-    for (const auto* name : {"foot", "kitty", "wezterm", "xdg-terminal-exec"}) {
+    for (const auto* name : {"foot", "kitty", "wezterm", "ghostty", "alacritty", "xdg-terminal-exec"}) {
       write(bin / name, "#!" + f.python + "\n", true);
     }
     g_setenv("PATH", bin.c_str(), true);
@@ -109,6 +109,37 @@ namespace {
     TEST_CHECK(
         terminalArguments("wezterm", true) == (std::vector<std::string>{(bin / "wezterm").native(), "start", "--"})
     );
+    const std::string folder = "/quotes ' % $() ;\n日本語";
+    const auto expect = [&](const std::string& command, bool execute, const std::vector<std::string>& suffix) {
+      const auto args = terminalArguments(command, execute, folder);
+      TEST_CHECK(std::vector<std::string>(args.begin() + 1, args.end()) == suffix);
+    };
+    expect("wezterm", false, {"start", "--cwd=" + folder});
+    expect(
+        "wezterm --config-file 'my config.lua' --config 'font_size=12'", true,
+        {"--config-file", "my config.lua", "--config", "font_size=12", "start", "--cwd=" + folder, "--"}
+    );
+    expect("wezterm -n start --new-tab --cwd=/old --", true, {"-n", "start", "--new-tab", "--cwd=" + folder, "--"});
+    expect("wezterm -e", true, {"-e", "--cwd=" + folder, "--"});
+    expect("wezterm cli spawn", true, {"cli", "spawn", "--cwd=" + folder, "--"});
+    expect("wezterm connect server", false, {"connect", "server"});
+    expect(
+        "ghostty --title='my title' -e", true,
+        {"--title=my title", "--working-directory=" + folder, "--gtk-single-instance=false", "-e"}
+    );
+    expect("ghostty +new-window", false, {"+new-window", "--working-directory=" + folder});
+    expect("alacritty --working-directory /old -e", true, {"--working-directory=" + folder, "-e"});
+    expect("kitty --", true, {"--directory=" + folder, "--"});
+    expect("foot", false, {"--working-directory=" + folder});
+    for (const auto* name :
+         {"footclient", "gnome-terminal", "kgx", "ptyxis", "mate-terminal", "xfce4-terminal", "konsole"}) {
+      write(bin / name, "#!" + f.python + "\n", true);
+      const auto* option = std::string(name) == "konsole" ? "--workdir=" : "--working-directory=";
+      expect(name, false, {option + folder});
+      fs::remove(bin / name);
+    }
+    fs::remove(bin / "ghostty");
+    fs::remove(bin / "alacritty");
     fs::remove(bin / "foot");
     fs::remove(bin / "kitty");
     fs::remove(bin / "wezterm");
@@ -120,7 +151,9 @@ namespace {
         bin / "foot",
         "#!"
             + f.python
-            + "\nimport os,sys\na=sys.argv[1:]\nif not a:\n open("
+            + "\nimport os,sys\na=sys.argv[1:]\n"
+              "if a and a[0].startswith('--working-directory='):\n os.chdir(a.pop(0).split('=',1)[1])\n"
+              "if not a:\n open("
             + (std::string("\"") + (f.root / "terminal-cwd").native() + "\"")
             + ",'w').write(os.getcwd())\n sys.exit(0)\nassert a.pop(0)=='--'\nos.execv(a[0],a)\n",
         true
@@ -156,7 +189,7 @@ namespace {
     );
     const GioPtr<GDesktopAppInfo> original(g_desktop_app_info_new_from_filename(desktopPath.c_str()));
     TEST_CHECK(original);
-    const auto app = terminalApplication(G_APP_INFO(original.get()), "foot");
+    const auto app = terminalApplication(G_APP_INFO(original.get()), "foot", *f.cwd.nativePath());
     TEST_CHECK(!g_desktop_app_info_get_boolean(G_DESKTOP_APP_INFO(app.get()), "Terminal"));
     TEST_CHECK(g_desktop_app_info_get_boolean(original.get(), "Terminal"));
     const auto location = Location::fromPath((f.root / "raw-\xff ' % café.txt").native());
@@ -167,6 +200,32 @@ namespace {
     TEST_CHECK(record["argv"][1] == hex("Terminal fixture"));
     TEST_CHECK(record["argv"][2] == hex(Location::fromPath(desktopPath.native()).uri()));
     TEST_CHECK(record["argv"][3] == hex(*location.nativePath()));
+    TEST_CHECK(record["cwd"] == hex(*f.cwd.nativePath()));
+    const auto explicitDirectory = f.root / "explicit ' % 日本語";
+    fs::create_directory(explicitDirectory);
+    write(
+        desktopPath,
+        "[Desktop Entry]\nType=Application\nName=Explicit directory\nTerminal=true\nExec="
+            + f.python
+            + " "
+            + runner.native()
+            + "\nPath="
+            + explicitDirectory.native()
+            + "\n"
+    );
+    const GioPtr<GDesktopAppInfo> explicitApp(g_desktop_app_info_new_from_filename(desktopPath.c_str()));
+    const auto adapted = terminalApplication(G_APP_INFO(explicitApp.get()), "foot", *f.cwd.nativePath());
+    TEST_CHECK(g_app_info_launch_uris(adapted.get(), nullptr, nullptr, nullptr));
+    TEST_CHECK(waitRecord(f.log, ++f.launches)["cwd"] == hex(explicitDirectory.native()));
+    // Restore the captured launcher fixture for the program-launching checks.
+    write(
+        desktopPath,
+        "[Desktop Entry]\nType=Application\nName=Terminal fixture\nTerminal=true\nExec="
+            + f.python
+            + " "
+            + runner.native()
+            + " %c %k %U\n"
+    );
     const auto nativeProgram = prepareProgram(Location::fromPath(runner.native()), {});
     launchProgram(nativeProgram, f.cwd, {location}, true, "terminal-fresh", {}, "foot");
     const auto nativeRecord = waitRecord(f.log, ++f.launches);
@@ -176,6 +235,7 @@ namespace {
     const auto desktopRecord = waitRecord(f.log, ++f.launches);
     TEST_CHECK(desktopRecord["argv"][2] == hex(Location::fromPath(desktopPath.native()).uri()));
     TEST_CHECK(desktopRecord["argv"][3] == hex(*location.nativePath()));
+    TEST_CHECK(desktopRecord["cwd"] == hex(*f.cwd.nativePath()));
     fs::remove(bin / "foot");
   }
   void testPrograms(Fixture& f) {

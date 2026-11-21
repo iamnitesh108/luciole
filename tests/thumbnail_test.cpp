@@ -23,6 +23,7 @@
 #include <gdk-pixbuf/gdk-pixbuf.h>
 #include <png.h>
 #include <print>
+#include <sstream>
 #include <stdexcept>
 #include <sys/stat.h>
 #include <thread>
@@ -254,7 +255,10 @@ namespace {
     TEST_CHECK(length > 0);
     decoded = luciole::decodeRasterImage({webp, length}, 128, 1000000, cancel.get());
     WebPFree(webp);
-    TEST_CHECK(decoded && decoded->rgba == original.rgba);
+    // Non-Glycin WebP loaders round-trip through premultiplied alpha, so translucent channels may drift by one.
+    TEST_CHECK(decoded && std::ranges::equal(decoded->rgba, original.rgba, [](std::uint8_t a, std::uint8_t b) {
+                 return std::abs(a - b) <= 1;
+               }));
     const GioPtr<GdkPixbuf> pixbuf(gdk_pixbuf_new(GDK_COLORSPACE_RGB, false, 8, 32, 16));
     gdk_pixbuf_fill(pixbuf.get(), 0xff3020ffU);
     gchar* jpeg = nullptr;
@@ -472,7 +476,14 @@ namespace {
     const std::array writes{
         luciole::ThumbnailCacheWrite{make(uri), 256}, luciole::ThumbnailCacheWrite{make(second), 512}
     };
+    const auto index = store.root().parent_path() / "luciole/thumbnail-index.json";
+    std::filesystem::create_directories(index.parent_path());
+    std::ofstream(index, std::ios::trunc) << R"([{"name":"../escape.png","bytes":1,"identity":"x"}])";
     store.writeBatch(writes, 16U * 1024U * 1024U, cancel.get());
+    std::stringstream ledger;
+    ledger << std::ifstream(index).rdbuf();
+    // A damaged entry is dropped instead of blocking every later batch.
+    TEST_CHECK(!ledger.str().contains("escape") && ledger.str().contains("large/"));
     const auto cached = store.read(uri, 128, 123, 42, "same");
     TEST_CHECK(
         cached
@@ -1071,7 +1082,10 @@ namespace {
   }
   void testCacheLanesAndCancellation(const Fixture& fixture) {
     Pump pump;
-    const auto firstPath = fixture.root / "slow-one.pdf";
+    // Every blocked copy of the first PDF shares one folder, so releasing it reaches the jobs started later.
+    const auto blocked = fixture.root / "blocked";
+    fs::create_directory(blocked);
+    const auto firstPath = blocked / "slow-one.pdf";
     const auto secondPath = fixture.root / "slow-two.pdf";
     fs::copy_file(fixture.root / "page.pdf", firstPath);
     fs::copy_file(fixture.root / "page.pdf", secondPath);
@@ -1103,7 +1117,7 @@ namespace {
         service.request(first, 128), service.request(second, 128)
     };
     for (std::uint64_t id = 200; busy.size() < decoders; ++id) {
-      const auto copy = fixture.root / std::format("slow-{}.pdf", id);
+      const auto copy = blocked / std::format("slow-{}.pdf", id);
       fs::copy_file(firstPath, copy);
       busy.push_back(service.request(source(copy, pump), 128));
     }
@@ -1120,7 +1134,7 @@ namespace {
     service.setChangedCallback([&] { ++completions; });
     std::vector<std::shared_ptr<const luciole::FileIconImage>> queued;
     for (std::uint64_t id = 100; id < 103; ++id) {
-      const auto copy = fixture.root / std::format("slow-{}.pdf", id);
+      const auto copy = blocked / std::format("slow-{}.pdf", id);
       fs::copy_file(firstPath, copy);
       queued.push_back(service.request(source(copy, pump), 128));
     }
@@ -1133,10 +1147,11 @@ namespace {
     TEST_CHECK(preview->pixels && std::ranges::none_of(queued, [](const auto& image) { return image->ready; }));
     // Explicit removal cancels even borrowed images and waits for their actual helper completion. Reads from
     // another location and their leases remain intact.
-    service.releaseLocation(first.location());
-    TEST_CHECK(service.readingLocation(first.location()));
+    const auto blockedLocation = luciole::Location::fromPath(blocked.native());
+    service.releaseLocation(blockedLocation);
+    TEST_CHECK(service.readingLocation(blockedLocation));
     TEST_CHECK(service.readingLocation(second.location()) && service.touch(busy.front(), true));
-    pump.until([&] { return !service.readingLocation(first.location()); });
+    pump.until([&] { return !service.readingLocation(blockedLocation); });
     TEST_CHECK(service.readingLocation(second.location()) && service.touch(busy.front(), true));
     TEST_CHECK(cached->pixels && preview->pixels);
     service.setChangedCallback({});

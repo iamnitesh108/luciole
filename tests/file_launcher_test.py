@@ -27,12 +27,15 @@ def run_case(binary, mode, names):
         handler = root / "handler.py"
         log = root / "launched.jsonl"
         token_log = root / "tokens.jsonl"
+        cwd_log = root / "cwd.jsonl"
         handler.write_text(
             "import json,os,sys\nfrom pathlib import Path\n"
             f"with Path({str(log)!r}).open('a') as stream:\n"
             " stream.write(json.dumps([os.fsencode(arg).hex() for arg in sys.argv[1:]])+'\\n')\n"
             f"with Path({str(token_log)!r}).open('a') as stream:\n"
             " stream.write(json.dumps([sys.argv[1:],os.getenv('XDG_ACTIVATION_TOKEN'),os.getenv('DESKTOP_STARTUP_ID')])+'\\n')\n"
+            f"with Path({str(cwd_log)!r}).open('a') as stream:\n"
+            " stream.write(json.dumps(os.getcwdb().hex())+'\\n')\n"
         )
         desktop = root / "data/applications/fixture.desktop"
         desktop.write_text(
@@ -118,7 +121,11 @@ def run_case(binary, mode, names):
             bin_dir = root / "bin"
             bin_dir.mkdir()
             foot = bin_dir / "foot"
-            foot.write_text(f"#!{sys.executable}\nimport os,sys\na=sys.argv[1:]\nassert a.pop(0)=='--'\nos.execv(a[0],a)\n")
+            foot.write_text(
+                f"#!{sys.executable}\nimport os,sys\na=sys.argv[1:]\n"
+                "assert a[0].startswith(('--working-directory=', '--dir='))\n"
+                "os.chdir(a.pop(0).split('=',1)[1])\nassert a.pop(0)=='--'\nos.execv(a[0],a)\n"
+            )
             foot.chmod(0o700)
             kitty = bin_dir / "kitty"
             kitty.write_text(f"#!{sys.executable}\nraise SystemExit('wrong terminal selected')\n")
@@ -204,6 +211,10 @@ def run_case(binary, mode, names):
                     raise AssertionError((invocations, expected_groups))
         if mode == "terminal-missing" and log.exists():
             raise AssertionError("invalid terminal preference silently fell back")
+        if mode.startswith("terminal-") and mode != "terminal-missing":
+            directories = [json.loads(line) for line in cwd_log.read_text().splitlines()]
+            if directories != [os.fsencode(root).hex()] * len(paths):
+                raise AssertionError(("terminal handler used the wrong folder", directories))
         if token_log.exists():
             values = [json.loads(line) for line in token_log.read_text().splitlines()]
             if mode == "tokens":

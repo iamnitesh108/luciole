@@ -81,8 +81,8 @@ namespace {
     return writable(c);
   }
   State paste(const C& c, const R& r) {
-    if (!c.clipboardAvailable || !c.clipboardHasFiles) {
-      return unavailable("The clipboard has no available files.");
+    if (!c.clipboardAvailable || (!c.clipboardHasFiles && !c.clipboardHasImage)) {
+      return unavailable("The clipboard has no files or image to paste.");
     }
     if (!r.folder || !transferLocationSupported(*r.folder) || !c.query.empty() || !ready(c)) {
       return unavailable("Open an available local or supported remote folder first.");
@@ -111,8 +111,8 @@ namespace {
     if (!all(c, r, [](const DirectoryEntry& entry) { return entry.location().nativePath().has_value(); })) {
       return unavailable("This operation currently supports native files only.");
     }
-    if (!rename && (!native(r) || !c.query.empty() || !ready(c))) {
-      return unavailable("Open the containing native folder before moving items to Trash.");
+    if (!rename && (!ready(c) || r.targets.size() > 4096)) {
+      return unavailable("Select at most 4096 native items from an available listing.");
     }
     if (!all(c, r, [&](const DirectoryEntry& entry) {
           return (rename ? entry.access.rename : entry.access.trash).value_or(true);
@@ -163,6 +163,16 @@ namespace {
     }
     return {};
   }
+  // One readable native regular archive: what Browse Archive and Extract accept, regardless of running jobs.
+  bool browsableArchive(const C& c, const R& r) {
+    return single(r) && all(c, r, [](const DirectoryEntry& entry) {
+             return entry.type == FileType::Regular
+                 && !entry.symlink
+                 && entry.location().nativePath().has_value()
+                 && entry.access.read.value_or(true)
+                 && luciole::isSupportedArchive(entry.location(), entry.contentType.value_or(""));
+           });
+  }
   State archive(const C& c, const R& r, bool compress) {
     if (c.operationsBusy) {
       return unavailable("Another file operation is still finishing.");
@@ -178,11 +188,7 @@ namespace {
           })) {
         return unavailable("Special files cannot be compressed.");
       }
-    } else if (!single(r) || !all(c, r, [](const DirectoryEntry& entry) {
-                 return entry.type == FileType::Regular
-                     && !entry.symlink
-                     && luciole::isSupportedArchive(entry.location(), entry.contentType.value_or(""));
-               })) {
+    } else if (!browsableArchive(c, r)) {
       return unavailable("Select one ZIP or TAR archive.");
     }
     return {};
@@ -228,6 +234,12 @@ namespace {
     );
   }
   State containing(const C&, const R& r) { return require(single(r), "Select exactly one item."); }
+  State linkTarget(const C& c, const R& r) {
+    return require(
+        single(r) && c.model.entry(r.targets.front().id)->symlink && !r.targets.front().location.isTrash(),
+        "Select one link."
+    );
+  }
   State originalLocation(const C& c, const R& r) {
     if (!single(r)) {
       return unavailable("Select exactly one item.");
@@ -329,43 +341,43 @@ namespace {
        .shortcut = "Alt+Right",
        .rule = [](const C& c, const R&) { return require(c.canForward, "There is no next folder."); }},
       {.action = A::Up,
-       .label = "Parent folder",
+       .label = "Parent Folder",
        .shortcut = "Alt+Up",
        .rule = [](const C& c, const R&) { return require(c.canUp, "This location has no parent folder."); }},
       {.action = A::Home, .label = "Home", .shortcut = "Alt+Home"},
       {.action = A::Root, .label = "File System", .shortcut = ""},
       {.action = A::Refresh, .label = "Refresh", .shortcut = "F5", .rule = openFolder},
       {.action = A::Stop,
-       .label = "Stop loading",
+       .label = "Stop Loading",
        .shortcut = "",
        .rule =
            [](const C& c, const R&) {
              return require(c.model.snapshot().status == luciole::DirectoryStatus::Loading, "Nothing is loading.");
            }},
-      {.action = A::EditLocation, .label = "Edit location", .shortcut = "Ctrl+L"},
-      {.action = A::Search, .label = "Search files", .shortcut = "Ctrl+F", .rule = openFolder},
+      {.action = A::EditLocation, .label = "Edit Location", .shortcut = "Ctrl+L"},
+      {.action = A::Search, .label = "Search Files", .shortcut = "Ctrl+F", .rule = openFolder},
       {.action = A::Grid,
-       .label = "Grid view",
+       .label = "Grid View",
        .shortcut = "Ctrl+1",
        .rule = [](const C& c, const R&) { return checked(c.viewMode == luciole::ViewMode::Grid); }},
       {.action = A::List,
-       .label = "List view",
+       .label = "List View",
        .shortcut = "Ctrl+2",
        .rule = [](const C& c, const R&) { return checked(c.viewMode == luciole::ViewMode::List); }},
       {.action = A::Miller,
-       .label = "Column view",
+       .label = "Column View",
        .shortcut = "Ctrl+3",
        .rule = [](const C& c, const R&) { return checked(c.viewMode == luciole::ViewMode::Miller); }},
       {.action = A::ShowHidden,
-       .label = "Show hidden files",
+       .label = "Show Hidden Files",
        .shortcut = "Ctrl+H",
        .rule = [](const C& c, const R&) { return checked(c.model.filter().showHidden); }},
       {.action = A::ShowSidebar,
-       .label = "Show sidebar",
+       .label = "Show Sidebar",
        .shortcut = "F9",
        .rule = [](const C& c, const R&) { return checked(c.showSidebar); }},
       {.action = A::ShowPreview,
-       .label = "Show preview",
+       .label = "Show Preview",
        .shortcut = "F8",
        .rule = [](const C& c, const R&) { return checked(c.showPreview); }},
       {.action = A::QuickPreview,
@@ -423,22 +435,31 @@ namespace {
        .shortcut = "",
        .rule = [](const C& c, const R&) { return checked(c.model.sort().descending); }},
       {.action = A::FoldersFirst,
-       .label = "Folders first",
+       .label = "Folders First",
        .shortcut = "",
        .rule = [](const C& c, const R&) { return checked(c.model.sort().directoriesFirst); }},
+      {.action = A::HiddenLast,
+       .label = "Hidden Last",
+       .shortcut = "",
+       .rule = [](const C& c, const R&) { return checked(c.model.sort().hiddenLast); }},
       {.action = A::Open, .label = "Open", .shortcut = "Enter", .scope = S::Targets, .rule = open},
       {.action = A::ContainingFolder,
-       .label = "Show in containing folder",
+       .label = "Show in Containing Folder",
        .shortcut = "",
        .scope = S::Targets,
        .rule = containing},
       {.action = A::OriginalLocation,
-       .label = "Show original location",
+       .label = "Show Original Location",
        .shortcut = "",
        .scope = S::Targets,
        .rule = originalLocation},
+      {.action = A::ShowLinkTarget,
+       .label = "Show Link Target",
+       .shortcut = "",
+       .scope = S::Targets,
+       .rule = linkTarget},
       {.action = A::Pin,
-       .label = "Pin to sidebar",
+       .label = "Pin to Sidebar",
        .shortcut = "",
        .scope = S::Targets,
        .rule = [](const C& c, const R& r) { return pin(c, r, false); }},
@@ -512,45 +533,45 @@ namespace {
        .rule = createItem},
       {.action = A::NewDocument, .label = "New Document", .shortcut = "", .scope = S::Location, .rule = createItem},
       {.action = A::PinCurrent,
-       .label = "Pin this folder to sidebar",
+       .label = "Pin This Folder to Sidebar",
        .shortcut = "",
        .scope = S::Location,
        .rule = [](const C& c, const R& r) { return pinCurrent(c, r, false); }},
       {.action = A::UnpinCurrent,
-       .label = "Unpin this folder",
+       .label = "Unpin This Folder",
        .shortcut = "",
        .scope = S::Location,
        .rule = [](const C& c, const R& r) { return pinCurrent(c, r, true); }},
       {.action = A::ReloadPins,
-       .label = "Reload pins",
+       .label = "Reload Pins",
        .shortcut = "",
        .rule = [](const C& c, const R&) { return require(!c.pinsBusy, "Pins are being saved."); }},
       {.action = A::EmptyTrash, .label = "Empty Trash…", .shortcut = "", .destructive = true, .rule = emptyTrash},
-      {.action = A::SelectAll, .label = "Select all", .shortcut = "Ctrl+A", .scope = S::Selection, .rule = visibleRows},
+      {.action = A::SelectAll, .label = "Select All", .shortcut = "Ctrl+A", .scope = S::Selection, .rule = visibleRows},
       {.action = A::InvertSelection,
-       .label = "Invert selection",
+       .label = "Invert Selection",
        .shortcut = "Ctrl+Shift+I",
        .scope = S::Selection,
        .rule = visibleRows},
       {.action = A::SelectPattern,
-       .label = "Select by pattern…",
+       .label = "Select by Pattern…",
        .shortcut = "Ctrl+S",
        .scope = S::Selection,
        .rule = visibleRows},
-      {.action = A::ClearSelection, .label = "Clear selection", .shortcut = "Escape", .scope = S::Selection},
+      {.action = A::ClearSelection, .label = "Clear Selection", .shortcut = "Escape", .scope = S::Selection},
       {.action = A::Settings, .label = "Settings…", .shortcut = "Ctrl+,"},
       {.action = A::About, .label = "About Luciole", .shortcut = ""},
       {.action = A::MenuBack, .label = "Back", .shortcut = ""},
       {.action = A::SortMenu, .label = "Sort…", .shortcut = ""},
       {.action = A::SelectionMenu, .label = "Selection…", .shortcut = ""},
       {.action = A::CopyPath,
-       .label = "Copy folder path",
+       .label = "Copy Folder Path",
        .shortcut = "",
        .scope = S::Location,
        .rule = folderClipboard},
-      {.action = A::CopyUri, .label = "Copy folder URI", .shortcut = "", .scope = S::Location, .rule = folderClipboard},
+      {.action = A::CopyUri, .label = "Copy Folder URI", .shortcut = "", .scope = S::Location, .rule = folderClipboard},
       {.action = A::Terminal, .label = "Open Terminal Here", .shortcut = "F4", .scope = S::Location, .rule = terminal},
-      {.action = A::CopyTargetPath, .label = "Copy path", .shortcut = "", .scope = S::Targets, .rule = clipboard},
+      {.action = A::CopyTargetPath, .label = "Copy Path", .shortcut = "", .scope = S::Targets, .rule = clipboard},
       {.action = A::CopyTargetUri, .label = "Copy URI", .shortcut = "", .scope = S::Targets, .rule = clipboard},
       {.action = A::RunProgram, .label = "Run as a Program", .shortcut = "", .scope = S::Targets, .rule = runProgram},
       {.action = A::RunInTerminal,
@@ -581,13 +602,13 @@ namespace {
        .rule = [](
                    const C& c, const R&
                ) { return require(c.canRedo && !c.operationsBusy, "No file operation can be redone right now."); }},
-      {.action = A::Operations, .label = "File operations", .shortcut = ""},
+      {.action = A::Operations, .label = "File Operations", .shortcut = ""},
       {.action = A::TargetTerminal,
        .label = "Open in Terminal",
        .shortcut = "",
        .scope = S::Targets,
        .rule = targetTerminal},
-      {.action = A::KeyboardShortcuts, .label = "Keyboard shortcuts", .shortcut = "F1"},
+      {.action = A::KeyboardShortcuts, .label = "Keyboard Shortcuts", .shortcut = "F1"},
   });
   static_assert(luciole::actionTableInOrder(kActions));
 } // namespace
@@ -624,6 +645,11 @@ bool luciole::ActionRegistry::current(const ActionContext& context, const Action
            return context.model.location(target.id) == target.location && context.model.visible(target.id);
          });
 }
+luciole::BrowserAction luciole::ActionRegistry::openAction(const ActionContext& context, const ActionRequest& request) {
+  return !context.chooser && current(context, request, ActionScope::Targets) && browsableArchive(context, request)
+      ? A::BrowseArchive
+      : A::Open;
+}
 bool luciole::chooserAction(BrowserAction action) {
   switch (action) {
   case A::Back:
@@ -654,6 +680,7 @@ bool luciole::chooserAction(BrowserAction action) {
   case A::Ascending:
   case A::Descending:
   case A::FoldersFirst:
+  case A::HiddenLast:
   case A::Open:
   case A::SelectAll:
   case A::InvertSelection:
@@ -670,6 +697,7 @@ bool luciole::chooserAction(BrowserAction action) {
   case A::OpenWith:
   case A::ContainingFolder:
   case A::OriginalLocation:
+  case A::ShowLinkTarget:
   case A::Pin:
   case A::Unpin:
   case A::CutFiles:

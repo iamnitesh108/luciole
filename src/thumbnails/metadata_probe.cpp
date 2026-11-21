@@ -62,6 +62,28 @@ namespace {
         && descriptor.st_ctim.tv_nsec >= 0
         && static_cast<std::uint64_t>(descriptor.st_ctim.tv_nsec) == nanos;
   }
+  luciole::MetadataFields symbolicLinkFields(const std::string& path, GFileInfo* info, GCancellable* cancel) {
+    luciole::MetadataFields fields;
+    if (g_file_info_get_attribute_type(info, G_FILE_ATTRIBUTE_STANDARD_SYMLINK_TARGET)
+        == G_FILE_ATTRIBUTE_TYPE_BYTE_STRING) {
+      const luciole::GString target(g_filename_display_name(g_file_info_get_symlink_target(info)));
+      fields.push_back({"Link Target", target.get()});
+    }
+    std::error_code error;
+    // Resolve the actual pathname before presenting it, preserving symlink/.. semantics.
+    const auto resolved = std::filesystem::canonical(path, error);
+    if (error) {
+      fields.push_back({"Target Status", luciole::errnoError(error.value()).message});
+    } else {
+      const luciole::GString target(g_filename_display_name(resolved.c_str()));
+      fields.push_back({"Resolved Target", target.get()});
+    }
+    struct stat named{};
+    if (g_cancellable_is_cancelled(cancel) || ::lstat(path.c_str(), &named) < 0 || !sameDescriptor(named, info)) {
+      return {};
+    }
+    return fields;
+  }
   luciole::MetadataFields commonFields(GFileInfo* info) {
     luciole::MetadataFields fields;
     for (const auto& [attribute, label] :
@@ -184,13 +206,22 @@ luciole::probePreviewMetadata(const DirectoryEntry& entry, ThumbnailOptions opti
       ",time::changed-nsec," G_FILE_ATTRIBUTE_TIME_CHANGED_USEC "," G_FILE_ATTRIBUTE_STANDARD_SIZE
       "," G_FILE_ATTRIBUTE_TIME_MODIFIED "," G_FILE_ATTRIBUTE_OWNER_USER "," G_FILE_ATTRIBUTE_OWNER_GROUP
       "," G_FILE_ATTRIBUTE_UNIX_MODE "," G_FILE_ATTRIBUTE_TIME_CREATED "," G_FILE_ATTRIBUTE_TIME_ACCESS
-      "," G_FILE_ATTRIBUTE_UNIX_DEVICE "," G_FILE_ATTRIBUTE_UNIX_INODE,
+      "," G_FILE_ATTRIBUTE_UNIX_DEVICE "," G_FILE_ATTRIBUTE_UNIX_INODE "," G_FILE_ATTRIBUTE_STANDARD_IS_SYMLINK
+      "," G_FILE_ATTRIBUTE_STANDARD_SYMLINK_TARGET,
       G_FILE_QUERY_INFO_NOFOLLOW_SYMLINKS, cancel, nullptr
   ));
   if (!current || !matches(entry, current.get())) {
     return {};
   }
   auto fields = commonFields(current.get());
+  if (readIsSymlink(current.get())) {
+    auto links = symbolicLinkFields(*path, current.get(), cancel);
+    if (links.empty()) {
+      return {};
+    }
+    links.insert(links.end(), std::make_move_iterator(fields.begin()), std::make_move_iterator(fields.end()));
+    return links;
+  }
   if (entry.type != FileType::Regular
       || entry.symlink
       || entryAccess(entry).read == false

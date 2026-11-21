@@ -6,6 +6,7 @@
 #include "app/page/page_context.h"
 #include "browser/browser_controller.h"
 #include "browser/location_presentation.h"
+#include "config/settings.h"
 #include "core/input/key_symbols.h"
 #include "platform/desktop_integration.h"
 #include "render/scene/input_dispatcher.h"
@@ -52,7 +53,6 @@ std::unique_ptr<Flex> LocationBarController::buildLocationArea() {
       ui::input(
           {.out = &m_location,
            .placeholder = "Location",
-           .fontSize = Style::fontSizeCaption,
            .frameVisible = false,
            .minLayoutWidth = 72.0F,
            .flexGrow = 1.0F,
@@ -98,7 +98,6 @@ std::unique_ptr<Flex> LocationBarController::buildSearchArea() {
       ui::input(
           {.out = &m_filterInput,
            .placeholder = "Search files…",
-           .fontSize = Style::fontSizeCaption,
            .controlHeight = Style::controlHeight,
            .horizontalPadding = 0.0F,
            .clearButtonEnabled = true,
@@ -210,25 +209,28 @@ bool LocationBarController::press(const PointerEvent& event, float x, float y) {
     return true;
   }
   const auto& location = m_page.browser().model().snapshot().location;
-  const bool blank = event.button == BTN_LEFT
+  const bool singleClickEdit = m_page.settings().singleClickLocationEdit;
+  const bool canEditHere =
+      event.button == BTN_LEFT
       && m_connection.keyboardModifiers() == 0
       && !m_editingLocation
       && location
       && m_locationArea
       && m_locationArea->containsScenePoint(x, y)
       && !(m_breadcrumbOverflow && m_breadcrumbOverflow->visible() && m_breadcrumbOverflow->containsScenePoint(x, y))
-      && std::ranges::none_of(m_dropBreadcrumbs, [x, y](const auto& crumb) {
-                       return crumb.second->containsScenePoint(x, y);
-                     });
-  if (blank) {
+      && std::ranges::none_of(m_dropBreadcrumbs, [x, y, singleClickEdit, &location](const auto& crumb) {
+           return (!singleClickEdit || crumb.first != *location) && crumb.second->containsScenePoint(x, y);
+         });
+  if (canEditHere) {
     const auto now = std::chrono::steady_clock::now();
-    const bool twice = m_blankLocationClick
+    const bool twice = !singleClickEdit
+        && m_blankLocationClick
         && m_blankLocationClick->location == location
         && m_blankLocationClick->context == m_page.browser().contextSerial()
         && now - m_blankLocationClick->time < std::chrono::milliseconds(400)
         && std::abs(x - m_blankLocationClick->x) <= 6.0F
         && std::abs(y - m_blankLocationClick->y) <= 6.0F;
-    if (twice) {
+    if (singleClickEdit || twice) {
       m_blankLocationClick.reset();
       m_breadcrumbEditTarget = location;
       m_page.surface().requestUpdate();
@@ -678,6 +680,7 @@ void LocationBarController::rebuildBreadcrumbs() {
       ui::button(
           {.out = &m_breadcrumbOverflow,
            .glyph = "dots",
+           .glyphSize = Style::baseGlyphSize,
            .controlHeight = Style::controlHeightSm,
            .variant = ButtonVariant::Ghost,
            .tooltip = "Parent folders",
@@ -695,7 +698,6 @@ void LocationBarController::rebuildBreadcrumbs() {
     auto* partButton = static_cast<Button*>(m_breadcrumbs->addChild(
         ui::button(
             {.text = crumbs[i].label,
-             .fontSize = Style::fontSizeCaption,
              .controlHeight = Style::controlHeightSm,
              .contentAlign = ButtonContentAlign::Start,
              .variant = ButtonVariant::Ghost,

@@ -177,7 +177,8 @@ void PreviewController::layoutPane(bool show) {
         snapshot, m_bounds->width, m_bounds->height,
         snapshot.entry ? m_page.browser().model().typeLabel(snapshot.entry->id) : ""
     );
-    if (!snapshot.image || !snapshot.image->pixels) {
+    // Releasing a shown fallback icon every layout would drop its texture before the async upload lands.
+    if (!m_view->showsImage()) {
       m_view->clear(surface.renderTarget().renderer());
     }
     m_view->arrange(surface.renderTarget().renderer(), *m_bounds);
@@ -210,7 +211,7 @@ void PreviewController::layoutQuickPreview() {
   m_quickPreview->sync(
       snapshot, width, height, snapshot.entry ? m_page.browser().model().typeLabel(snapshot.entry->id) : ""
   );
-  if (!snapshot.image || !snapshot.image->pixels) {
+  if (!m_quickPreview->showsImage()) {
     m_quickPreview->clear(m_page.popupSurface()->renderTarget().renderer());
   }
 }

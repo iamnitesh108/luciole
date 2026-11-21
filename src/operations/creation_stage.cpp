@@ -132,6 +132,25 @@ std::string luciole::CreationStage::recoveryPath() const {
                                  : "/proc/" + std::to_string(::getpid()) + "/fd/" + std::to_string(fd()) + "/item";
 }
 
+namespace {
+  void writeAll(int output, const char* data, std::size_t size, const luciole::CancelToken& token) {
+    std::size_t written = 0;
+    while (written < size) {
+      if (token.cancelled()) {
+        luciole::throwFileError(luciole::FileErrorKind::Cancelled, "Creation cancelled.");
+      }
+      const auto amount = ::write(output, data + written, size - written);
+      if (amount < 0 && errno == EINTR) {
+        continue;
+      }
+      if (amount <= 0) {
+        luciole::throwErrno(amount < 0 ? errno : EIO);
+      }
+      written += static_cast<std::size_t>(amount);
+    }
+  }
+} // namespace
+
 void luciole::copyCreationData(int source, int output, std::uint64_t size, const CancelToken& token) {
   std::array<char, 65536> buffer{};
   std::uint64_t offset = 0;
@@ -151,20 +170,11 @@ void luciole::copyCreationData(int source, int output, std::uint64_t size, const
     if (count < 0) {
       throwErrno(errno);
     }
-    std::size_t written = 0;
-    while (written < static_cast<std::size_t>(count)) {
-      if (token.cancelled()) {
-        throwFileError(FileErrorKind::Cancelled, "Creation cancelled.");
-      }
-      const auto amount = ::write(output, buffer.data() + written, static_cast<std::size_t>(count) - written);
-      if (amount < 0 && errno == EINTR) {
-        continue;
-      }
-      if (amount <= 0) {
-        throwErrno(amount < 0 ? errno : EIO);
-      }
-      written += static_cast<std::size_t>(amount);
-    }
+    writeAll(output, buffer.data(), static_cast<std::size_t>(count), token);
     offset += static_cast<std::uint64_t>(count);
   }
+}
+
+void luciole::writeCreationData(std::string_view data, int output, const CancelToken& token) {
+  writeAll(output, data.data(), data.size(), token);
 }

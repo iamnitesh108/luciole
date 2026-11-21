@@ -41,6 +41,7 @@ namespace luciole {
              .controlHeight = 24.0F,
              .variant = ButtonVariant::Ghost,
              .tooltip = "Close",
+             .followsCloseButtons = true,
              .padding = Style::spaceXs,
              .width = 24.0F,
              .onClick = std::move(close),

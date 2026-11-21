@@ -17,6 +17,8 @@ namespace luciole {
     void start(
         const Location& location, std::function<void(std::expected<Location, FileError>)> done, bool mountable = false
     );
+    // Unlocks and mounts a device through its GIO provider, with the same prompt/cancellation lifecycle.
+    void startVolume(GVolume* volume, std::function<void(std::expected<Location, FileError>)> done);
     void cancel();
     void setChangedCallback(std::function<void()> callback);
     MountInteraction& interaction();

@@ -13,7 +13,10 @@ MountDialog::MountDialog(
   setDirection(FlexDirection::Vertical);
   setAlign(FlexAlign::Stretch);
   luciole::applyDialogStyle(*this);
-  addChild(luciole::dialogHeader(prompt.password ? "Connect to server" : "Server confirmation", "network", cancel));
+  const bool device = prompt.purpose == luciole::MountPurpose::Device;
+  const auto* title = device ? (prompt.password ? "Unlock Drive" : "Drive Confirmation")
+                             : (prompt.password ? "Connect to Server" : "Server Confirmation");
+  addChild(luciole::dialogHeader(title, device ? "database" : "network", cancel));
   auto scroll = ui::scrollView({.viewportPaddingH = 0.0F, .viewportPaddingV = 0.0F, .flexGrow = 1.0F});
   scroll->content()->setDirection(FlexDirection::Vertical);
   scroll->content()->setAlign(FlexAlign::Stretch);
@@ -61,9 +64,11 @@ MountDialog::MountDialog(
                                      this->submit(true);
                                    }}));
     }
-    footer->addChild(ui::button({.text = "Connect", .variant = ButtonVariant::Primary, .onClick = [this] {
-                                   this->submit(false);
-                                 }}));
+    footer->addChild(
+        ui::button({.text = device ? "Unlock" : "Connect", .variant = ButtonVariant::Primary, .onClick = [this] {
+                      this->submit(false);
+                    }})
+    );
   }
   addChild(std::move(footer));
 }
@@ -77,7 +82,7 @@ void MountDialog::submit(bool guest) {
       m_user ? m_user->value() : "", m_domain ? m_domain->value() : "", m_password ? m_password->value() : "", guest
   };
   if (!m_submit(std::move(credentials))) {
-    m_error->setText("This connection request is no longer active.");
+    m_error->setText("This request is no longer active.");
     markLayoutDirty();
   }
 }

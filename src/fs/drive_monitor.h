@@ -1,8 +1,10 @@
 #pragma once
 
+#include "fs/file_error.h"
 #include "fs/location.h"
 
 #include <cstdint>
+#include <expected>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -10,6 +12,7 @@
 #include <vector>
 
 namespace luciole {
+  class LocationMount;
   struct DriveUsage {
     std::uint64_t used = 0;
     std::uint64_t size = 0;
@@ -70,7 +73,8 @@ namespace luciole {
     // Runs on the main context when a drive's usage changes. Must not throw.
     void setUsageChangedCallback(std::function<void()> callback);
     // Mounts the drive if needed; done receives the root, or an error message.
-    void mount(const std::string& key, std::function<void(std::optional<Location>, std::string)> done);
+    void
+    mount(const std::string& key, LocationMount& request, std::function<void(std::expected<Location, FileError>)> done);
     // Removes the drive as its `removal` says, without forcing: when files on it are open, nothing is unmounted
     // and the result lists the processes GIO found.
     void remove(const std::string& key, std::function<void(DriveRemoveResult)> done);

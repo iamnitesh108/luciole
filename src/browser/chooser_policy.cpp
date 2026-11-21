@@ -6,22 +6,6 @@
 namespace {
   using luciole::FileType;
 
-  // Listings report links without following them, so a link counts as its native target's type.
-  FileType chosenType(const luciole::DirectoryEntry& entry) {
-    if (!entry.symlink && entry.type != FileType::Symlink) {
-      return entry.type;
-    }
-    const auto path = entry.location().nativePath();
-    struct stat info{};
-    if (!path || ::stat(path->c_str(), &info) != 0) {
-      return FileType::Symlink;
-    }
-    if (S_ISDIR(info.st_mode)) {
-      return FileType::Directory;
-    }
-    return S_ISREG(info.st_mode) ? FileType::Regular : FileType::Special;
-  }
-
   luciole::ChooserDecision unavailable(std::string_view reason) {
     return {.kind = luciole::ChooserDecision::Kind::Unavailable, .locations = {}, .reason = reason};
   }
@@ -35,6 +19,24 @@ namespace {
     return decision;
   }
 } // namespace
+
+bool luciole::isLink(const DirectoryEntry& entry) { return entry.symlink || entry.type == FileType::Symlink; }
+
+// Listings report links without following them, so a link counts as its native target's type.
+luciole::FileType luciole::chosenType(const DirectoryEntry& entry) {
+  if (!isLink(entry)) {
+    return entry.type;
+  }
+  const auto path = entry.location().nativePath();
+  struct stat info{};
+  if (!path || ::stat(path->c_str(), &info) != 0) {
+    return FileType::Symlink;
+  }
+  if (S_ISDIR(info.st_mode)) {
+    return FileType::Directory;
+  }
+  return S_ISREG(info.st_mode) ? FileType::Regular : FileType::Special;
+}
 
 luciole::ChooserDecision luciole::chooserDecision(
     ChooserMode mode, const std::optional<Location>& folder, std::span<const DirectoryEntry> entries
@@ -78,6 +80,8 @@ luciole::ChooserDecision luciole::chooserDecision(
   }
   return unavailable("Only folders can be chosen.");
 }
+
+bool luciole::offersSaveName(FileType chosen) { return chosen != FileType::Directory; }
 
 std::vector<luciole::DirectoryEntry> luciole::chooserSelection(const DirectoryModel& model) {
   std::vector<DirectoryEntry> entries;
