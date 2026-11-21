@@ -257,9 +257,7 @@ void FileChooserSession::syncSave() {
     }
     // Selecting a file offers to save over it.
     const auto selection = luciole::chooserSelection(m_page->browser().model());
-    if (selection.size() == 1
-        && selection.front().type != luciole::FileType::Directory
-        && selection.front().id != m_namedFrom) {
+    if (selection.size() == 1 && luciole::offersSaveName(selection.front()) && selection.front().id != m_namedFrom) {
       m_namedFrom = selection.front().id;
       m_name->setValue(selection.front().name);
       m_confirm.clear();

@@ -21,6 +21,8 @@ namespace luciole {
   };
   ChooserDecision
   chooserDecision(ChooserMode mode, const std::optional<Location>& folder, std::span<const DirectoryEntry> entries);
+  // Whether selecting `entry` while saving offers its name to save over; folders and links to folders are entered.
+  bool offersSaveName(const DirectoryEntry& entry);
   // The selected entries of `model`, in row order.
   std::vector<DirectoryEntry> chooserSelection(const DirectoryModel& model);
   // Why `name` (raw bytes) cannot name a new item in a folder; empty when it can.

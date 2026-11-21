@@ -124,6 +124,18 @@ namespace {
     TEST_CHECK(chosen.size() == 2 && chosen[0].id == 2 && chosen[1].id == 3);
   }
 
+  // Selecting a file while saving offers its name to save over; folders and links to folders are entered instead.
+  void testSaveNames() {
+    TEST_CHECK(luciole::offersSaveName(entry(1, "a.txt")));
+    TEST_CHECK(!luciole::offersSaveName(entry(2, "sub", FileType::Directory)));
+    auto folderLink = entry(3, "linked", FileType::Symlink);
+    folderLink.symlink = true;
+    auto fileLink = folderLink;
+    folderLink.linksToDirectory = true;
+    TEST_CHECK(!luciole::offersSaveName(folderLink));
+    TEST_CHECK(luciole::offersSaveName(fileLink));
+  }
+
   void testFileNames() {
     TEST_CHECK(luciole::fileNameProblem("report.odt").empty());
     TEST_CHECK(luciole::fileNameProblem("r\xe9port").empty());
@@ -141,6 +153,7 @@ int main() {
     testNonNative();
     testSymlinks();
     testSelection();
+    testSaveNames();
     testFileNames();
     std::println("chooser policy checks passed");
     return 0;

@@ -79,6 +79,10 @@ luciole::ChooserDecision luciole::chooserDecision(
   return unavailable("Only folders can be chosen.");
 }
 
+bool luciole::offersSaveName(const DirectoryEntry& entry) {
+  return entry.type != FileType::Directory && !entry.linksToDirectory;
+}
+
 std::vector<luciole::DirectoryEntry> luciole::chooserSelection(const DirectoryModel& model) {
   std::vector<DirectoryEntry> entries;
   for (const auto id : model.selectedIds()) {
