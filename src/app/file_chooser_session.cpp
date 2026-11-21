@@ -4,6 +4,7 @@
 #include "app/workspace_layout.h"
 #include "core/input/key_symbols.h"
 #include "core/log.h"
+#include "fs/background_job.h"
 #include "platform/desktop_integration.h"
 #include "ui/builders.h"
 #include "ui/controls/button.h"
@@ -76,7 +77,10 @@ FileChooserSession::FileChooserSession(
   }
 }
 
-FileChooserSession::~FileChooserSession() { m_dropdown.closeSelectDropdown(); }
+FileChooserSession::~FileChooserSession() {
+  m_nameLookup.cancel();
+  m_dropdown.closeSelectDropdown();
+}
 
 std::string FileChooserSession::windowTitle() const {
   if (!m_request.title.empty()) {
@@ -255,12 +259,10 @@ void FileChooserSession::syncSave() {
       const auto dot = value.rfind('.');
       m_name->selectRange(0, dot != std::string::npos && dot > 0 ? dot : value.size());
     }
-    // Selecting a file offers to save over it.
     const auto selection = luciole::chooserSelection(m_page->browser().model());
-    if (selection.size() == 1 && luciole::offersSaveName(selection.front()) && selection.front().id != m_namedFrom) {
+    if (selection.size() == 1 && selection.front().id != m_namedFrom) {
       m_namedFrom = selection.front().id;
-      m_name->setValue(selection.front().name);
-      m_confirm.clear();
+      offerName(selection.front());
     }
   }
   std::string_view problem;
@@ -272,6 +274,34 @@ void FileChooserSession::syncSave() {
   m_accept->setEnabled(problem.empty());
   m_accept->setText(m_confirm.empty() ? std::string_view(m_acceptText) : std::string_view("Replace"));
   m_reason->setText(!m_confirm.empty() ? std::string_view(m_reasonText) : problem);
+}
+
+void FileChooserSession::offerName(const luciole::DirectoryEntry& entry) {
+  m_nameLookup.cancel();
+  const auto offer = [this](luciole::FileType chosen, const std::string& name) {
+    // Selecting a file offers to save over it.
+    if (luciole::offersSaveName(chosen)) {
+      m_name->setValue(name);
+      m_confirm.clear();
+    }
+  };
+  if (!luciole::isLink(entry)) {
+    offer(entry.type, entry.name);
+    return;
+  }
+  // A link's target may sit on a slow or hung mount, so it is followed on a worker. The answer is dropped when the
+  // selection changed or the name was edited meanwhile.
+  m_nameLookup = luciole::CancelToken{};
+  const auto token = m_nameLookup;
+  const std::weak_ptr<int> lifetime = m_lifetime;
+  luciole::runJob<luciole::FileType>(
+      token, [entry] { return luciole::chosenType(entry); },
+      [this, lifetime, token, offer, name = entry.name, typed = m_name->value()](auto result) {
+        if (!lifetime.expired() && !token.cancelled() && result && m_name->value() == typed) {
+          offer(*result, name);
+        }
+      }
+  );
 }
 
 void FileChooserSession::open(const std::vector<luciole::DirectoryEntry>& targets) {

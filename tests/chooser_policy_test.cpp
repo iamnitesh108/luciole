@@ -108,6 +108,15 @@ namespace {
     TEST_CHECK(luciole::chooserDecision({}, folder, fileLink).kind == Kind::Accept);
     TEST_CHECK(luciole::chooserDecision({}, folder, dangling).kind == Kind::Unavailable);
     TEST_CHECK(luciole::chooserDecision({.directory = true, .multiple = false}, folder, dirLink).kind == Kind::Accept);
+    // Saving follows a link itself rather than trusting the listing's mark, which GIO listings never set and native
+    // ones set late or keep from an older target.
+    TEST_CHECK(luciole::isLink(dirLink.front()) && !luciole::isLink(entry(4, "a.txt")));
+    TEST_CHECK(!luciole::offersSaveName(luciole::chosenType(dirLink.front())));
+    TEST_CHECK(luciole::offersSaveName(luciole::chosenType(fileLink.front())));
+    TEST_CHECK(luciole::offersSaveName(luciole::chosenType(dangling.front())));
+    auto repointed = fileLink.front();
+    repointed.linksToDirectory = true;
+    TEST_CHECK(luciole::offersSaveName(luciole::chosenType(repointed)));
     fs::remove_all(root);
   }
 
@@ -124,16 +133,13 @@ namespace {
     TEST_CHECK(chosen.size() == 2 && chosen[0].id == 2 && chosen[1].id == 3);
   }
 
-  // Selecting a file while saving offers its name to save over; folders and links to folders are entered instead.
+  // Selecting a file while saving offers its name to save over; folders are entered instead.
   void testSaveNames() {
-    TEST_CHECK(luciole::offersSaveName(entry(1, "a.txt")));
-    TEST_CHECK(!luciole::offersSaveName(entry(2, "sub", FileType::Directory)));
-    auto folderLink = entry(3, "linked", FileType::Symlink);
-    folderLink.symlink = true;
-    auto fileLink = folderLink;
-    folderLink.linksToDirectory = true;
-    TEST_CHECK(!luciole::offersSaveName(folderLink));
-    TEST_CHECK(luciole::offersSaveName(fileLink));
+    TEST_CHECK(luciole::offersSaveName(FileType::Regular));
+    TEST_CHECK(luciole::offersSaveName(FileType::Symlink));
+    TEST_CHECK(!luciole::offersSaveName(FileType::Directory));
+    TEST_CHECK(luciole::chosenType(entry(1, "a.txt")) == FileType::Regular);
+    TEST_CHECK(luciole::chosenType(entry(2, "sub", FileType::Directory)) == FileType::Directory);
   }
 
   void testFileNames() {
