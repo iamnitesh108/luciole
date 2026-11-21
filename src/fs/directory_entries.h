@@ -71,7 +71,8 @@ namespace luciole {
     FileType type = FileType::Unknown;
     bool hidden = false;
     bool symlink = false;
-    // A symlink whose target is a folder. Only local sessions learn this, after they publish the listing.
+    // A symlink whose target is a folder. Only local sessions learn this, after they publish the listing; they set
+    // it with setLinksToDirectory().
     bool linksToDirectory = false;
     // Local listings leave access read/write/execute unknown; entryAccess() asks the filesystem when they matter.
     bool accessDeferred = false;
@@ -114,6 +115,9 @@ namespace luciole {
     void setParentDisplayName(std::string text);
     void setTrash(std::optional<TrashInfo> trash);
     void setShortcutTarget(std::optional<Location> target);
+    // Also swaps the generic link icon for the folder icon, and back. Other icons, such as a linked special
+    // folder's, stay.
+    void setLinksToDirectory(bool leadsToFolder);
 
   private:
     EntryExtra& editExtra();

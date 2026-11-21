@@ -932,7 +932,7 @@ struct luciole::DirectorySession::State : std::enable_shared_from_this<State> {
       for (std::size_t i = 0; i < scan->entries.size(); ++i) {
         auto& entry = scan->entries[i];
         if (entry.symlink) {
-          entry.linksToDirectory = add(i, entry.name);
+          entry.setLinksToDirectory(add(i, entry.name));
         }
       }
     }
