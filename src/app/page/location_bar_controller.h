@@ -67,7 +67,7 @@ public:
   // Pointer hooks in BrowserPage::pointer() for the page surface.
   // Ends a pending double click on movement and closes completions on a press outside them.
   void pointer(const PointerEvent& event, float x, float y);
-  // A second press on the current breadcrumb or the empty location bar starts editing.
+  // Starts editing on a second press on the current breadcrumb or empty bar, or a single press on either when enabled.
   bool press(const PointerEvent& event, float x, float y);
   // Keyboard hooks in BrowserPage::keyboard().
   // Any key press ends pending double clicks.

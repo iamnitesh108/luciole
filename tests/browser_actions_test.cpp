@@ -205,6 +205,9 @@ namespace {
     );
     c.clipboardHasFiles = false;
     TEST_CHECK(!R::state(A::PasteFiles, c, request).enabled);
+    c.clipboardHasImage = true;
+    TEST_CHECK(R::state(A::PasteFiles, c, request).enabled);
+    c.clipboardHasImage = false;
     c.clipboardHasFiles = true;
     c.operationsBusy = true;
     TEST_CHECK(!R::state(A::PasteFiles, c, request).enabled);

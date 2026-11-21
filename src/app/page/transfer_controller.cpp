@@ -2,6 +2,7 @@
 
 #include "app/operation_hub.h"
 #include "app/page/active_popup.h"
+#include "app/page/create_controller.h"
 #include "app/page/page_context.h"
 #include "browser/browser_controller.h"
 #include "browser/location_presentation.h"
@@ -39,8 +40,8 @@ namespace {
   }
 } // namespace
 
-TransferController::TransferController(PageContext& page, std::function<void()> progressTick)
-    : m_page(page), m_progressTick(std::move(progressTick)) {}
+TransferController::TransferController(PageContext& page, std::function<void()> progressTick, CreateController& create)
+    : m_page(page), m_progressTick(std::move(progressTick)), m_create(create) {}
 
 void TransferController::paste(const luciole::ActionRequest& request) {
   if (request.folder) {
@@ -59,18 +60,27 @@ void TransferController::paste(
 ) {
   m_pendingFilePaste = true;
   const std::weak_ptr<int> lifetime = m_lifetime;
-  m_page.clipboard().requestFiles([this, lifetime, request, scope,
-                                   destination =
-                                       std::move(destination)](std::optional<luciole::ClipboardFiles> selection) {
+  m_page.clipboard().requestFiles([this, lifetime, request, scope, destination = std::move(destination)](
+                                      std::optional<luciole::ClipboardFiles> selection
+                                  ) mutable {
     if (lifetime.expired()) {
+      return;
+    }
+    if (!selection) {
+      if (m_page.clipboard().hasImage()) {
+        // No file URIs: the clipboard may still hold an image to save as a new file.
+        pasteImage(request, scope, std::move(destination));
+        return;
+      }
+      const bool pending = std::exchange(m_pendingFilePaste, false);
+      if (!pending || !m_page.visible() || !m_page.requestCurrent(request, scope)) {
+        return;
+      }
+      m_page.actionError("The clipboard changed or its file data could not be read.");
       return;
     }
     const bool pending = std::exchange(m_pendingFilePaste, false);
     if (!pending || !m_page.visible() || !m_page.requestCurrent(request, scope)) {
-      return;
-    }
-    if (!selection) {
-      m_page.actionError("The clipboard changed or its file data could not be read.");
       return;
     }
     if (m_page.operationsBusy()) {
@@ -90,6 +100,31 @@ void TransferController::paste(
         m_page.clipboard().finishMove(*selection, {});
       }
     }
+  });
+}
+
+void TransferController::pasteImage(
+    const luciole::ActionRequest& request, luciole::ActionScope scope, luciole::Location destination
+) {
+  const std::weak_ptr<int> lifetime = m_lifetime;
+  m_page.clipboard().requestImage([this, lifetime, request, scope,
+                                   destination =
+                                       std::move(destination)](std::optional<luciole::ClipboardImage> image) mutable {
+    if (lifetime.expired()) {
+      return;
+    }
+    const bool pending = std::exchange(m_pendingFilePaste, false);
+    if (!pending || !m_page.visible() || !m_page.requestCurrent(request, scope)) {
+      return;
+    }
+    if (!image) {
+      m_page.actionError("The clipboard changed or its image data could not be read.");
+      return;
+    }
+    if (m_page.operationsBusy()) {
+      return;
+    }
+    m_create.openImagePaste(std::move(*image), std::move(destination));
   });
 }
 
@@ -413,7 +448,7 @@ void TransferController::syncConflict() {
   auto root = ui::column(
       {.align = FlexAlign::Stretch},
       luciole::dialogHeader(
-          "Item already exists", "alert-triangle", [choose] { choose(luciole::TransferConflictChoice::Cancel); }
+          "Item Already Exists", "alert-triangle", [choose] { choose(luciole::TransferConflictChoice::Cancel); }
       ),
       ui::label(
           {.text = conflict->name,
@@ -476,7 +511,7 @@ void TransferController::syncConflict() {
           ),
           ui::button(
               {.out = &keepBoth,
-               .text = "Keep both",
+               .text = "Keep Both",
                .variant = ButtonVariant::Primary,
                .onClick = [choose] { choose(luciole::TransferConflictChoice::KeepBoth); }}
           ),

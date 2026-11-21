@@ -26,6 +26,8 @@ It offers grid, list and Miller column views, tabs, split view and rich file pre
 > [!IMPORTANT]
 > Luciole is young and actively evolving. It is usable today, but settings, shortcuts and behavior may change between releases, and rough edges remain.
 
+<img width="1900" height="1256" alt="image" src="https://github.com/user-attachments/assets/398e2f25-6fe0-4595-a9ba-626f07a0632b" />
+
 ## Why Luciole?
 
 We wanted a file manager that responds as fast as we can move. Folders with thousands of files should open and scroll without a stutter, thumbnails should fill in as you go instead of freezing the view, and a second window should not cost a second application.

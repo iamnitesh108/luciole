@@ -439,6 +439,8 @@ std::string_view OperationHub::historyLabel(bool redo) const {
       return redo ? "Redo Create File" : "Undo Create File";
     case luciole::CreateKind::Document:
       return redo ? "Redo Create Document" : "Undo Create Document";
+    case luciole::CreateKind::Image:
+      return redo ? "Redo Save Image" : "Undo Save Image";
     case luciole::CreateKind::SymbolicLink:
     case luciole::CreateKind::HardLink:
       return redo ? "Redo Create Link" : "Undo Create Link";

@@ -100,13 +100,13 @@ void ApplicationChooserController::show(const std::vector<luciole::DirectoryEntr
       std::move(scroll),
       ui::button(
           {.out = &other,
-           .text = "Show other applications",
+           .text = "Show Other Applications",
            .variant = ButtonVariant::Ghost,
            .onClick =
                [this, session] {
                  if (current(session) && !session->submitting) {
                    session->other = !session->other;
-                   m_other->setText(session->other ? "Show suggested applications" : "Show other applications");
+                   m_other->setText(session->other ? "Show Suggested Applications" : "Show Other Applications");
                    load();
                  }
                }}
@@ -117,7 +117,7 @@ void ApplicationChooserController::show(const std::vector<luciole::DirectoryEntr
            .gap = Style::spaceSm,
            .visible = session->types.size() == 1,
            .participatesInLayout = session->types.size() == 1},
-          ui::label({.text = "Use as default for this file type", .maxLines = 2, .flexGrow = 1}),
+          ui::label({.text = "Use as Default for This File Type", .maxLines = 2, .flexGrow = 1}),
           ui::toggle(
               {.out = &useDefault,
                .enabled = session->canSetDefault,

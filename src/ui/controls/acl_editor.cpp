@@ -133,7 +133,7 @@ void AclEditor::rebuild() {
   if (!m_actual || !m_actual->supported) {
     return;
   }
-  constexpr std::array names{"Owner", "User", "Owning group", "Group", "Mask", "Others"};
+  constexpr std::array names{"Owner", "User", "Owning Group", "Group", "Mask", "Others"};
   constexpr float nameWidth = 168.0F, removeWidth = Style::controlHeightSm;
   for (const bool defaults : {false, true}) {
     if (defaults && !m_actual->directory) {
@@ -144,7 +144,7 @@ void AclEditor::rebuild() {
     std::unique_ptr<Node> removeDefaults;
     if (defaults && !rows.empty()) {
       removeDefaults = ui::button(
-          {.text = "Remove defaults",
+          {.text = "Remove Defaults",
            .glyph = "trash",
            .controlHeight = Style::controlHeightSm,
            .enabled = m_editable,
@@ -156,7 +156,7 @@ void AclEditor::rebuild() {
       );
     }
     Flex* body = nullptr;
-    m_rows->addChild(luciole::card(defaults ? "Defaults for new items" : "Rules", &body, std::move(removeDefaults)));
+    m_rows->addChild(luciole::card(defaults ? "Defaults for New Items" : "Rules", &body, std::move(removeDefaults)));
     if (defaults) {
       body->addChild(
           ui::label(
@@ -171,7 +171,7 @@ void AclEditor::rebuild() {
             ui::row(
                 {.paddingV = Style::spaceXs},
                 ui::button(
-                    {.text = "Add defaults",
+                    {.text = "Add Defaults",
                      .glyph = "plus",
                      .controlHeight = Style::controlHeightSm,
                      .enabled = m_editable,
@@ -290,7 +290,7 @@ void AclEditor::rebuild() {
     for (const bool user : {true, false}) {
       actions->addChild(
           ui::button(
-              {.text = user ? "Add user" : "Add group",
+              {.text = user ? "Add User" : "Add Group",
                .glyph = user ? "user-plus" : "users-plus",
                .controlHeight = Style::controlHeightSm,
                .enabled = m_editable && rows.size() + (mask ? 1 : 2) <= luciole::maxAclEntries,
@@ -310,7 +310,7 @@ void AclEditor::rebuild() {
     actions->addChild(ui::spacer());
     actions->addChild(
         ui::button(
-            {.text = "Recalculate mask",
+            {.text = "Recalculate Mask",
              .glyph = "calculator",
              .controlHeight = Style::controlHeightSm,
              .enabled = m_editable && (mask || rows.size() < luciole::maxAclEntries),

@@ -122,6 +122,7 @@ namespace luciole {
     bool showPreview = false;
     bool clipboardAvailable = false;
     bool clipboardHasFiles = false;
+    bool clipboardHasImage = false;
     bool terminalAvailable = false;
     bool canUndo = false, canRedo = false;
     bool chooser = false;

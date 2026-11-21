@@ -106,7 +106,7 @@ void OperationsController::open() {
           {.justify = FlexJustify::End},
           ui::button(
               {.out = &clear,
-               .text = "Clear finished",
+               .text = "Clear Finished",
                .controlHeight = Style::controlHeightSm,
                .variant = ButtonVariant::Ghost,
                .onClick = [this] { m_hub.clearFinishedActivities(); }}
@@ -191,7 +191,7 @@ void OperationsController::details(std::uint64_t id) {
                    }}
           ),
           ui::button(
-              {.text = "Copy report",
+              {.text = "Copy Report",
                .enabled = m_page.clipboard().available(),
                .variant = ButtonVariant::Ghost,
                .onClick = [this, report] { m_page.clipboard().setClipboardText(*report); }}

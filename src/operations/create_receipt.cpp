@@ -207,7 +207,8 @@ namespace {
             proof.item.get(), stage.item(), static_cast<std::uint64_t>(proof.stamp.st_size), token
         );
       }
-      if ((kind == K::EmptyFile || kind == K::Document) && ::fchmod(stage.item(), proof.stamp.st_mode & 07777) != 0) {
+      if ((kind == K::EmptyFile || kind == K::Document || kind == K::Image)
+          && ::fchmod(stage.item(), proof.stamp.st_mode & 07777) != 0) {
         luciole::throwErrno(errno);
       }
       auto expected = proof.stamp;
@@ -260,7 +261,10 @@ luciole::CreateReceipt::capture(CreateKind kind, const Location& destination, in
     throwFileError(FileErrorKind::Changed, "The created item changed before history was captured.");
   }
   if ((kind == CreateKind::Folder && !S_ISDIR(stamp.st_mode))
-      || ((kind == CreateKind::EmptyFile || kind == CreateKind::Document || kind == CreateKind::HardLink)
+      || ((kind == CreateKind::EmptyFile
+           || kind == CreateKind::Document
+           || kind == CreateKind::Image
+           || kind == CreateKind::HardLink)
           && !S_ISREG(stamp.st_mode))
       || (kind == CreateKind::SymbolicLink && !S_ISLNK(stamp.st_mode))) {
     throwFileError(FileErrorKind::Changed, "The created item's type changed.");

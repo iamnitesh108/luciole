@@ -205,7 +205,7 @@ void PropertiesController::syncMetadata() {
     }
   }
   if (m_folderTotals) {
-    std::erase_if(fields, [](const auto& field) { return field.label == "Folder contents"; });
+    std::erase_if(fields, [](const auto& field) { return field.label == "Folder Contents"; });
     m_folderTotals->sync(m_metadataWidth);
   }
   // The entry's own facts lead, so both kinds read as one table with one row rhythm.
@@ -464,7 +464,7 @@ PropertiesController::Body PropertiesController::buildBody(
             {.align = FlexAlign::Center, .gap = Style::spaceSm, .paddingV = 2.0F},
             ui::column(
                 {.align = FlexAlign::Stretch, .gap = Style::spaceXs, .flexGrow = 1.0F},
-                ui::label({.text = "Access control list", .fontWeight = FontWeight::SemiBold}),
+                ui::label({.text = "Access Control List", .fontWeight = FontWeight::SemiBold}),
                 ui::label(
                     {.text = "Grant rights to more users and groups.",
                      .fontSize = Style::fontSizeCaption,
@@ -473,7 +473,7 @@ PropertiesController::Body PropertiesController::buildBody(
             ),
             ui::button(
                 {.out = &advancedOpen,
-                 .text = "Advanced permissions…",
+                 .text = "Advanced Permissions…",
                  .controlHeight = Style::controlHeightSm,
                  .variant = ButtonVariant::Default,
                  .onClick = [this] { showAdvanced(true, true); }}
@@ -520,7 +520,7 @@ PropertiesController::Body PropertiesController::buildBody(
                  .maxWidth = Style::controlHeightSm,
                  .onClick = [this] { showAdvanced(false, true); }}
             ),
-            ui::label({.text = "Access control list", .fontSize = Style::fontSizeTitle, .fontWeight = FontWeight::Bold})
+            ui::label({.text = "Access Control List", .fontSize = Style::fontSizeTitle, .fontWeight = FontWeight::Bold})
         ),
         std::move(aclControl)
     );
@@ -653,7 +653,7 @@ void PropertiesController::show(const std::vector<luciole::DirectoryEntry>& targ
             ),
             ui::button(
                 {.out = &reportButton,
-                 .text = "Copy report",
+                 .text = "Copy Report",
                  .enabled = false,
                  .variant = ButtonVariant::Ghost,
                  .visible = false,

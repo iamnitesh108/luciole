@@ -18,7 +18,7 @@ Explicit sort changes from menus, list headings and the open Settings dialog sha
 
 ## Filename presentation
 
-`browser.filename_truncation` accepts `middle` (default) and `end`. Settings → Views → Long filenames uses the existing typed preference and Select control. BrowsePresentation carries the value to every pane; FileRow applies the Label ellipsis mode on bind, including recycled List rows, expanded folders and Miller columns. Grid keeps its two-line wrapping. Parent labels, metadata columns, Places, tooltips and raw operation names retain their existing behavior. Sorting, selection and metadata loading are independent of the preference.
+`browser.filename_truncation` accepts `middle` (default) and `end`. Settings → Views → Long Filenames uses the existing typed preference and Select control. BrowsePresentation carries the value to every pane; FileRow applies the Label ellipsis mode on bind, including recycled List rows, expanded folders and Miller columns. Grid keeps its two-line wrapping. Parent labels, metadata columns, Places, tooltips and raw operation names retain their existing behavior. Sorting, selection and metadata loading are independent of the preference.
 
 Plain single-line Middle text uses the shared renderer's compact layout. Pango stretches its synthetic ellipsis run after removing whole grapheme clusters; the renderer subtracts that excess advance from the layout budget and asks Pango to lay out again. It uses public APIs without rewriting filenames or modifying Pango-owned glyph data. Actual spaces remain text. Start/End, markup and multiline layouts retain normal Pango behavior. The correction lives upstream in Noctalia and is mirrored into Luciole.
 

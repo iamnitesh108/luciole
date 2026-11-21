@@ -737,6 +737,27 @@ namespace {
     TEST_CHECK(contents(fixture.root / "output/created.txt") == std::string(data.size(), 'x'));
   }
 
+  void imageHistory(Pump& pump) {
+    using S = luciole::CreateStatus;
+    Fixture fixture;
+    const std::string data("\x89PNG\0binary\xff", 12);
+    std::ofstream(fixture.root / "taken.png") << "existing";
+    luciole::CreateService service;
+    TEST_CHECK(service.prepareImage(location(fixture.root), data));
+    pump.until([&] { return !service.busy(); });
+    pump.create(service, "taken.png");
+    TEST_CHECK(
+        service.snapshot().status == S::Error && service.snapshot().error->kind == luciole::FileErrorKind::Exists
+    );
+    TEST_CHECK(contents(fixture.root / "taken.png") == "existing");
+    pump.create(service, "pasted.png");
+    TEST_CHECK(service.snapshot().status == S::Succeeded && contents(fixture.root / "pasted.png") == data);
+    pump.replay(service);
+    TEST_CHECK(service.snapshot().status == S::Succeeded && !fs::exists(fixture.root / "pasted.png"));
+    pump.replay(service);
+    TEST_CHECK(service.snapshot().status == S::Succeeded && contents(fixture.root / "pasted.png") == data);
+  }
+
   void linkHistory(Pump& pump) {
     using K = luciole::CreateKind;
     using S = luciole::CreateStatus;
@@ -931,6 +952,7 @@ int main() {
     creationHistory(pump);
     creationHistoryGuards(pump);
     retainedDocumentHistory(pump);
+    imageHistory(pump);
     linkHistory(pump);
     cancelledReplay(pump);
     undoSourceRace(pump);

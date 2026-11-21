@@ -384,11 +384,11 @@ void MenuController::openPlaceMenu(const luciole::Bookmark& bookmark, float x, f
     entries.push_back({.label = "", .separator = true});
     if (!bookmark.location.isTrash() && bookmark.location != luciole::Location::network()) {
       entries.push_back({.id = 2, .label = "Unpin", .enabled = m_pins.editable()});
-      entries.push_back({.id = 6, .label = "Rename place…", .enabled = m_pins.editable()});
-      entries.push_back({.id = 8, .label = "Change icon…", .enabled = m_pins.editable()});
+      entries.push_back({.id = 6, .label = "Rename Place…", .enabled = m_pins.editable()});
+      entries.push_back({.id = 8, .label = "Change Icon…", .enabled = m_pins.editable()});
     }
-    entries.push_back({.id = 3, .label = "Move up", .enabled = m_pins.editable() && adjacent(true).has_value()});
-    entries.push_back({.id = 4, .label = "Move down", .enabled = m_pins.editable() && adjacent(false).has_value()});
+    entries.push_back({.id = 3, .label = "Move Up", .enabled = m_pins.editable() && adjacent(true).has_value()});
+    entries.push_back({.id = 4, .label = "Move Down", .enabled = m_pins.editable() && adjacent(false).has_value()});
   }
   entries.push_back({.label = "", .separator = true});
   if (bookmark.location == luciole::Location::trash()) {
@@ -478,7 +478,7 @@ void MenuController::openBreadcrumbMenu(const luciole::Location& target, LayoutR
     entries.push_back(std::move(entry));
   }
   entries.push_back({.label = "", .separator = true});
-  entries.push_back({.label = "Sibling folders", .header = true});
+  entries.push_back({.label = "Sibling Folders", .header = true});
   entries.push_back({.label = "Loading folders…", .enabled = false});
   const auto activate = [this, context, target, targets](int id) {
     if (context != m_page.browser().contextSerial()) {
@@ -663,38 +663,38 @@ void MenuController::openColumnsMenu(const LayoutRect& anchor, std::optional<luc
   }
   entries.push_back({.label = "", .separator = true});
   entries.push_back(
-      {.id = 100, .label = "Show all columns", .enabled = m_columns.columnVisibility() != luciole::allDetailsColumns()}
+      {.id = 100, .label = "Show All Columns", .enabled = m_columns.columnVisibility() != luciole::allDetailsColumns()}
   );
   entries.push_back(
       {.id = 106,
-       .label = "Reset column visibility",
+       .label = "Reset Column Visibility",
        .enabled = m_columns.columnVisibility() != luciole::DetailsColumnVisibility{}}
   );
   const int left = Style::rtl() ? 1 : -1;
   if (column) {
     entries.push_back({.label = "", .separator = true});
     entries.push_back(
-        {.id = 101, .label = "Move left", .enabled = m_columns.movedColumnOrder(*column, left).has_value()}
+        {.id = 101, .label = "Move Left", .enabled = m_columns.movedColumnOrder(*column, left).has_value()}
     );
     entries.push_back(
-        {.id = 102, .label = "Move right", .enabled = m_columns.movedColumnOrder(*column, -left).has_value()}
+        {.id = 102, .label = "Move Right", .enabled = m_columns.movedColumnOrder(*column, -left).has_value()}
     );
   }
   entries.push_back({.label = "", .separator = true});
   entries.push_back(
       {.id = 103,
-       .label = "Reset column order",
+       .label = "Reset Column Order",
        .enabled = m_columns.columnOrder() != luciole::kDefaultDetailsColumnOrder}
   );
   const std::size_t widthIndex = column ? static_cast<std::size_t>(*column) + 1 : 0;
   entries.push_back(
       {.id = 104,
-       .label = "Reset column width",
+       .label = "Reset Column Width",
        .enabled = m_columns.columnWidths()[widthIndex] != luciole::kDefaultDetailsColumnWidths[widthIndex]}
   );
   entries.push_back(
       {.id = 105,
-       .label = "Reset all column widths",
+       .label = "Reset All Column Widths",
        .enabled = m_columns.columnWidths() != luciole::kDefaultDetailsColumnWidths}
   );
   showContextMenu(

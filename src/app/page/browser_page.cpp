@@ -1359,6 +1359,7 @@ luciole::ActionContext BrowserPage::actionContext() const {
       .showPreview = previewEnabled(),
       .clipboardAvailable = m_clipboard.available(),
       .clipboardHasFiles = m_clipboard.hasFiles(),
+      .clipboardHasImage = m_clipboard.hasImage(),
       .terminalAvailable = m_terminal.available(),
       .canUndo = m_hub.canUndo(),
       .canRedo = m_hub.canRedo(),
@@ -1716,7 +1717,7 @@ void BrowserPage::unpinTargets(const std::vector<luciole::DirectoryEntry>& targe
 
 void BrowserPage::openPatternSelection(const luciole::ActionRequest& request) {
   auto editor = std::make_unique<NameDialog>(
-      dialogWidth(DialogWidth::Small), "Select by pattern", "cursor-text", m_selectionPattern,
+      dialogWidth(DialogWidth::Small), "Select by Pattern", "cursor-text", m_selectionPattern,
       "Use * for any text and ? for one character. Matches visible names, ignoring case.",
       luciole::selectionPatternProblem,
       [this, request](std::string pattern) {

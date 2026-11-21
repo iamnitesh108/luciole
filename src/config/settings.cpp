@@ -226,6 +226,10 @@ namespace {
       ),
       describe(P::TypingMode, "typing_mode", [](S& s) -> auto& { return s.typingMode; }, {kTypingModes}),
       describe(
+          P::SingleClickLocationEdit, "single_click_location_edit",
+          [](S& s) -> auto& { return s.singleClickLocationEdit; }
+      ),
+      describe(
           P::ConfirmPermanentDeletion, "confirm_permanent_deletion",
           [](S& s) -> auto& { return s.confirmPermanentDeletion; }
       ),

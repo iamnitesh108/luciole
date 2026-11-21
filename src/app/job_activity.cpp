@@ -239,6 +239,7 @@ namespace {
       activity.title = snapshot.kind == luciole::CreateKind::Folder ? "Create folder"
           : snapshot.kind == luciole::CreateKind::EmptyFile         ? "Create file"
           : snapshot.kind == luciole::CreateKind::Document          ? "Create document"
+          : snapshot.kind == luciole::CreateKind::Image             ? "Save image"
                                                                     : "Create link";
       if (job.historyReplay() != HistoryReplay::None) {
         activity.title = (job.historyReplay() == HistoryReplay::Undo ? "Undo: " : "Redo: ") + activity.title;

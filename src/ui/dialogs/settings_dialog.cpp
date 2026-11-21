@@ -55,7 +55,7 @@ SettingsDialog::SettingsDialog(
       ),
       ui::button(
           {.out = &m_reset,
-           .text = "Reset all settings",
+           .text = "Reset All Settings",
            .glyph = "restore",
            .controlHeight = Style::controlHeightSm,
            .variant = ButtonVariant::Ghost,
@@ -93,41 +93,42 @@ SettingsDialog::SettingsDialog(
   section("General", "adjustments-horizontal");
   card("Behavior");
   addChoice(
-      P::ActivationMode, "Open items",
-      {{"Single click", luciole::ActivationMode::SingleClick}, {"Double click", luciole::ActivationMode::DoubleClick}}
+      P::ActivationMode, "Open Items",
+      {{"Single Click", luciole::ActivationMode::SingleClick}, {"Double Click", luciole::ActivationMode::DoubleClick}}
   );
   addChoice(
-      P::TypingMode, "When typing",
-      {{"Search subfolders", luciole::TypingMode::Search},
-       {"Filter current folder", luciole::TypingMode::Filter},
-       {"Select names", luciole::TypingMode::Typeahead}}
+      P::TypingMode, "When Typing",
+      {{"Search Subfolders", luciole::TypingMode::Search},
+       {"Filter Current Folder", luciole::TypingMode::Filter},
+       {"Select Names", luciole::TypingMode::Typeahead}}
   );
-  addBool(P::ConfirmPermanentDeletion, "Confirm permanent deletion");
-  addBool(P::ShowPermanentDeletion, "Show Delete Permanently in context menus");
-  addBool(P::SwitchToNewTab, "Switch to new folder tabs");
-  addBool(P::RestoreLastWindow, "Restore tabs from last closed window");
+  addBool(P::SingleClickLocationEdit, "Single-Click Location Bar to Edit");
+  addBool(P::ConfirmPermanentDeletion, "Confirm Permanent Deletion");
+  addBool(P::ShowPermanentDeletion, "Show Delete Permanently in Context Menus");
+  addBool(P::SwitchToNewTab, "Switch to New Folder Tabs");
+  addBool(P::RestoreLastWindow, "Restore Tabs from Last Closed Window");
   card("Terminal");
   addTerminal();
   section("Appearance", "paint");
   card("Window");
-  addFraction(P::BackgroundOpacity, "Background opacity", 1.0, 0.01);
-  addFraction(P::CornerRadiusScale, "Corner roundness", 2.0, 0.05, {}, [](double value) {
+  addFraction(P::BackgroundOpacity, "Background Opacity", 1.0, 0.01);
+  addFraction(P::CornerRadiusScale, "Corner Roundness", 2.0, 0.05, {}, [](double value) {
     Style::setCornerRadiusScale(static_cast<float>(value));
   });
-  addBool(P::AlwaysShowTabBar, "Always show tab bar");
-  addBool(P::AlwaysShowStatusBar, "Always show status bar");
-  addBool(P::CompactMenus, "Compact context menus");
-  addBool(P::ShowCloseButtons, "Show close buttons");
+  addBool(P::AlwaysShowTabBar, "Always Show Tab Bar");
+  addBool(P::AlwaysShowStatusBar, "Always Show Status Bar");
+  addBool(P::CompactMenus, "Compact Context Menus");
+  addBool(P::ShowCloseButtons, "Show Close Buttons");
   card("Sidebar");
-  addBool(P::ShowSidebar, "Show sidebar");
-  addBool(P::SidebarTree, "Show folder tree");
-  addBool(P::ShowDrives, "Show drives");
+  addBool(P::ShowSidebar, "Show Sidebar");
+  addBool(P::SidebarTree, "Show Folder Tree");
+  addBool(P::ShowDrives, "Show Drives");
   addBool(P::ShowNetwork, "Show Network");
-  addNumber(P::SidebarWidth, "Sidebar width", widths(luciole::kMinSidebarWidth, luciole::kMaxSidebarWidth));
+  addNumber(P::SidebarWidth, "Sidebar Width", widths(luciole::kMinSidebarWidth, luciole::kMaxSidebarWidth));
   card("Preview");
-  addBool(P::ShowPreview, "Show preview");
-  addBool(P::ChooserShowPreview, "Show preview in file picker");
-  addNumber(P::PreviewWidth, "Preview width", widths(208, 800));
+  addBool(P::ShowPreview, "Show Preview");
+  addBool(P::ChooserShowPreview, "Show Preview in File Picker");
+  addNumber(P::PreviewWidth, "Preview Width", widths(208, 800));
   section("Views", "layout-grid");
   card("View");
   addChoice(
@@ -138,19 +139,19 @@ SettingsDialog::SettingsDialog(
       P::Density, "Density",
       {{"Compact", luciole::ViewDensity::Compact}, {"Comfortable", luciole::ViewDensity::Comfortable}}
   );
-  addBool(P::ShowEmblems, "Link and read-only emblems");
+  addBool(P::ShowEmblems, "Link and Read-Only Emblems");
   addChoice(
-      P::FilenameTruncation, "Long filenames",
-      {{"Shorten in the middle", luciole::FilenameTruncation::Middle},
-       {"Shorten at the end", luciole::FilenameTruncation::End}},
+      P::FilenameTruncation, "Long Filenames",
+      {{"Shorten in the Middle", luciole::FilenameTruncation::Middle},
+       {"Shorten at the End", luciole::FilenameTruncation::End}},
       "List and column views"
   );
   card("Files");
-  addBool(P::ShowHidden, "Show hidden files");
-  addBool(P::ShowBackups, "Show backup files (*~)");
+  addBool(P::ShowHidden, "Show Hidden Files");
+  addBool(P::ShowBackups, "Show Backup Files (*~)");
   card("Sorting");
   addChoice(
-      P::SortBy, "Sort by",
+      P::SortBy, "Sort By",
       {{"Name", luciole::SortField::Name},
        {"Type", luciole::SortField::Type},
        {"Size", luciole::SortField::Size},
@@ -162,30 +163,30 @@ SettingsDialog::SettingsDialog(
        {"Permissions", luciole::SortField::Permissions},
        {"Location", luciole::SortField::Location}}
   );
-  addBool(P::SortDescending, "Reverse order");
-  addBool(P::DirectoriesFirst, "Folders first");
-  addBool(P::HiddenLast, "Hidden last");
+  addBool(P::SortDescending, "Reverse Order");
+  addBool(P::DirectoriesFirst, "Folders First");
+  addBool(P::HiddenLast, "Hidden Last");
   card("Grid");
-  addNumber(P::GridIconSize, "Icon size", {luciole::kGridIconSizes.begin(), luciole::kGridIconSizes.end()});
-  addBool(P::ShowSizeCaption, "File size caption");
-  addBool(P::ShowTypeCaption, "File type caption");
-  addBool(P::ShowModifiedCaption, "Modified date caption");
-  card("Column view");
-  addNumber(P::MillerColumnWidth, "Column width", {180, 208, 240, 260, 300, 360, 480, 640, 800});
-  addBool(P::MillerShowParents, "Show parent folders");
-  section("List columns", "list-details");
+  addNumber(P::GridIconSize, "Icon Size", {luciole::kGridIconSizes.begin(), luciole::kGridIconSizes.end()});
+  addBool(P::ShowSizeCaption, "File Size Caption");
+  addBool(P::ShowTypeCaption, "File Type Caption");
+  addBool(P::ShowModifiedCaption, "Modified Date Caption");
+  card("Column View");
+  addNumber(P::MillerColumnWidth, "Column Width", {180, 208, 240, 260, 300, 360, 480, 640, 800});
+  addBool(P::MillerShowParents, "Show Parent Folders");
+  section("List Columns", "list-details");
   card("List");
-  addBool(P::ExpandableFolders, "Expandable folders");
+  addBool(P::ExpandableFolders, "Expandable Folders");
   auto orderLabel = ui::label({.fontSize = Style::fontSizeCaption, .maxWidth = 180.0F});
   auto* orderText = orderLabel.get();
   addRow<luciole::DetailsColumnOrder>(
-      P::ColumnOrder, "Column order",
+      P::ColumnOrder, "Column Order",
       [orderText](const auto& order) {
         orderText->setText(order == luciole::kDefaultDetailsColumnOrder ? "Default" : "Custom");
       },
       std::move(orderLabel)
   );
-  card("Visible columns");
+  card("Visible Columns");
   addBool(P::ShowTypeColumn, "Type");
   addBool(P::ShowSizeColumn, "Size");
   addBool(P::ShowModifiedColumn, "Modified");
@@ -195,7 +196,7 @@ SettingsDialog::SettingsDialog(
   addBool(P::ShowGroupColumn, "Group");
   addBool(P::ShowPermissionsColumn, "Permissions");
   addBool(P::ShowLocationColumn, "Location");
-  card("Column widths");
+  card("Column Widths");
   addNumber(P::NameColumnWidth, "Name (0 = auto)", widths(160, 16384, true));
   addNumber(P::TypeColumnWidth, "Type", widths(64, 2048));
   addNumber(P::SizeColumnWidth, "Size", widths(64, 2048));
@@ -209,22 +210,22 @@ SettingsDialog::SettingsDialog(
   section("Thumbnails", "photo");
   card("Generation");
   addChoice(
-      P::ThumbnailPolicy, "Show thumbnails",
+      P::ThumbnailPolicy, "Show Thumbnails",
       {{"Never", luciole::ThumbnailPolicy::Never},
-       {"Local files", luciole::ThumbnailPolicy::Local},
-       {"All locations", luciole::ThumbnailPolicy::All}},
+       {"Local Files", luciole::ThumbnailPolicy::Local},
+       {"All Locations", luciole::ThumbnailPolicy::All}},
       "All locations can generate thumbnails on mounted shares. Unmounted locations use cached thumbnails."
   );
-  addNumber(P::ThumbnailMaxFileMib, "Image/PDF size limit", {1, 1024}, "MiB");
+  addNumber(P::ThumbnailMaxFileMib, "Image/PDF Size Limit", {1, 1024}, "MiB");
   card("Cache");
-  addNumber(P::ThumbnailCacheMib, "Disk cache limit", {16, 8192}, "MiB");
+  addNumber(P::ThumbnailCacheMib, "Disk Cache Limit", {16, 8192}, "MiB");
   m_section->addChild(
       ui::row(
           {.align = FlexAlign::Center, .gap = 8.0F, .paddingV = kRowPaddingV, .minHeight = Style::controlHeight},
-          ui::label({.text = "Cached thumbnails", .fontWeight = FontWeight::SemiBold, .flexGrow = 1.0F}),
+          ui::label({.text = "Cached Thumbnails", .fontWeight = FontWeight::SemiBold, .flexGrow = 1.0F}),
           ui::button(
               {.out = &m_clearThumbnails,
-               .text = "Clear cache",
+               .text = "Clear Cache",
                .variant = ButtonVariant::Default,
                .minWidth = 180.0F,
                .maxWidth = 180.0F,
@@ -345,7 +346,7 @@ void SettingsDialog::addTerminal() {
   input->setOnSubmit([commit](const std::string&) { commit(); });
   input->setOnFocusLoss(commit);
   addRow<std::string>(
-      P::TerminalCommand, "Terminal command",
+      P::TerminalCommand, "Terminal Command",
       [input](const std::string& value) {
         if (!input->inputArea()->focused()) {
           input->setValue(value);
@@ -447,7 +448,7 @@ void SettingsDialog::sync(
     const std::string& error, bool clearingThumbnails
 ) {
   m_clearThumbnails->setEnabled(!clearingThumbnails);
-  m_clearThumbnails->setText(clearingThumbnails ? "Clearing…" : "Clear cache");
+  m_clearThumbnails->setText(clearingThumbnails ? "Clearing…" : "Clear Cache");
   m_current = settings;
   m_inherited = inherited;
   for (const auto& [id, show] : m_rows) {
@@ -464,7 +465,7 @@ void SettingsDialog::setStatus(const std::string& text, bool error) {
 void SettingsDialog::onResetClicked() {
   if (!m_resetArmed) {
     m_resetArmed = true;
-    m_reset->setText("Confirm reset");
+    m_reset->setText("Confirm Reset");
     m_reset->setVariant(ButtonVariant::Destructive);
     return;
   }
@@ -475,7 +476,7 @@ void SettingsDialog::disarmReset() {
   if (!std::exchange(m_resetArmed, false)) {
     return;
   }
-  m_reset->setText("Reset all settings");
+  m_reset->setText("Reset All Settings");
   m_reset->setVariant(ButtonVariant::Ghost);
 }
 void SettingsDialog::reveal(const Node* node) {

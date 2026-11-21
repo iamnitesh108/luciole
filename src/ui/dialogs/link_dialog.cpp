@@ -15,7 +15,7 @@ LinkDialog::LinkDialog(
   setDirection(FlexDirection::Vertical);
   setAlign(FlexAlign::Stretch);
   luciole::applyDialogStyle(*this);
-  addChild(luciole::dialogHeader("Create link", "link", cancel));
+  addChild(luciole::dialogHeader("Create Link", "link", cancel));
   auto scroll =
       ui::scrollView({.out = &m_scroll, .viewportPaddingH = 0.0F, .viewportPaddingV = 0.0F, .flexGrow = 1.0F});
   scroll->content()->setDirection(FlexDirection::Vertical);
@@ -37,14 +37,14 @@ LinkDialog::LinkDialog(
            .onChange = [this](const std::string&) { showError({}); },
            .onSubmit = [this](const std::string&) { this->submit(); }}
       ),
-      ui::label({.text = "Destination folder"}),
+      ui::label({.text = "Destination Folder"}),
       ui::input(
           {.out = &m_destination,
            .value = std::move(destination),
            .onChange = [this](const std::string&) { showError({}); },
            .onSubmit = [this](const std::string&) { this->submit(); }}
       ),
-      ui::label({.text = "Link type"})
+      ui::label({.text = "Link Type"})
   );
   if (hardAllowed) {
     body->addChild(
@@ -52,15 +52,15 @@ LinkDialog::LinkDialog(
             {.out = &m_kind,
              .options =
                  std::vector<ui::SegmentedOption>{
-                     {.label = "Symbolic link", .glyph = {}, .tooltip = {}},
-                     {.label = "Hard link", .glyph = {}, .tooltip = {}}
+                     {.label = "Symbolic Link", .glyph = {}, .tooltip = {}},
+                     {.label = "Hard Link", .glyph = {}, .tooltip = {}}
                  },
              .equalSegmentWidths = true,
              .onChange = [this](std::size_t) { showError({}); }}
         )
     );
   } else {
-    body->addChild(ui::label({.text = "Symbolic link"}));
+    body->addChild(ui::label({.text = "Symbolic Link"}));
   }
   scroll->content()->addChild(std::move(body));
   addChild(std::move(scroll));

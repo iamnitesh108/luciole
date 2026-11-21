@@ -14,8 +14,8 @@ MountDialog::MountDialog(
   setAlign(FlexAlign::Stretch);
   luciole::applyDialogStyle(*this);
   const bool device = prompt.purpose == luciole::MountPurpose::Device;
-  const auto* title = device ? (prompt.password ? "Unlock drive" : "Drive confirmation")
-                             : (prompt.password ? "Connect to server" : "Server confirmation");
+  const auto* title = device ? (prompt.password ? "Unlock Drive" : "Drive Confirmation")
+                             : (prompt.password ? "Connect to Server" : "Server Confirmation");
   addChild(luciole::dialogHeader(title, device ? "database" : "network", cancel));
   auto scroll = ui::scrollView({.viewportPaddingH = 0.0F, .viewportPaddingV = 0.0F, .flexGrow = 1.0F});
   scroll->content()->setDirection(FlexDirection::Vertical);

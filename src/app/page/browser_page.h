@@ -405,7 +405,7 @@ private:
   CreateController m_createController{*this, m_templates, m_submenus};
   MountController m_mountController{*this};
   ArchiveController m_archiveController{*this, m_launcher, m_icons, m_connection};
-  TransferController m_transferController{*this, [this] { operationProgressTick(); }};
+  TransferController m_transferController{*this, [this] { operationProgressTick(); }, m_createController};
   OperationsController m_operations{*this, m_hub, [this](luciole::JobId id, bool retry) {
                                       if (m_operationRequest) {
                                         m_operationRequest(id, retry);

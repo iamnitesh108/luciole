@@ -91,11 +91,11 @@ void ShortcutsController::open() {
         )
     );
   };
-  heading("Files and folders");
+  heading("Files and Folders");
   for (const auto& [text, keys] : kFiles) {
     row(text, keys);
   }
-  heading("Tabs and windows");
+  heading("Tabs and Windows");
   for (const auto& [text, keys] : kWindows) {
     row(text, keys);
   }
@@ -107,7 +107,7 @@ void ShortcutsController::open() {
   }
   auto root = ui::column(
       {.align = FlexAlign::Stretch},
-      luciole::dialogHeader("Keyboard shortcuts", "keyboard", [this] { m_page.dismissPopup(); }), std::move(body)
+      luciole::dialogHeader("Keyboard Shortcuts", "keyboard", [this] { m_page.dismissPopup(); }), std::move(body)
   );
   luciole::applyDialogStyle(*root);
   m_page.showDialog(std::move(root), DialogWidth::Medium, PopupDismiss::OutsideClick);

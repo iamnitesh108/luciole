@@ -88,7 +88,7 @@ PermissionEditor::PermissionEditor(std::function<void()> edited, bool multiple, 
             {.align = FlexAlign::Center, .gap = Style::spaceSm, .paddingV = 2.0F},
             ui::column(
                 {.align = FlexAlign::Stretch, .gap = 2.0F, .flexGrow = 1.0F},
-                ui::label({.text = "Include folder contents", .fontWeight = FontWeight::SemiBold}),
+                ui::label({.text = "Include Folder Contents", .fontWeight = FontWeight::SemiBold}),
                 ui::label(
                     {.text = "Change every file and folder inside, per kind.",
                      .fontSize = Style::fontSizeCaption,
@@ -133,11 +133,11 @@ PermissionEditor::PermissionEditor(std::function<void()> edited, bool multiple, 
   Flex* access = nullptr;
   direct->addChild(luciole::card("Access", &access, std::move(badge)));
   Flex* special = nullptr;
-  auto specialCard = luciole::card("Special permissions", &special);
+  auto specialCard = luciole::card("Special Permissions", &special);
   if (multiple) {
-    constexpr std::array names{"Owner read",     "Owner write",   "Owner execute", "Group read",
-                               "Group write",    "Group execute", "Others read",   "Others write",
-                               "Others execute", "Set user ID",   "Set group ID",  "Sticky bit"};
+    constexpr std::array names{"Owner Read",     "Owner Write",   "Owner Execute", "Group Read",
+                               "Group Write",    "Group Execute", "Others Read",   "Others Write",
+                               "Others Execute", "Set User ID",   "Set Group ID",  "Sticky Bit"};
     for (std::size_t i = 0; i < bits.size(); ++i) {
       (i < 9 ? access : special)
           ->addChild(
@@ -185,7 +185,7 @@ PermissionEditor::PermissionEditor(std::function<void()> edited, bool multiple, 
       }
       access->addChild(std::move(controls));
     }
-    constexpr std::array specials{"Set user ID", "Set group ID", "Sticky bit"};
+    constexpr std::array specials{"Set User ID", "Set Group ID", "Sticky Bit"};
     constexpr std::array hints{
         "Executables run as the file's owner.", "Run as the group; new items inherit the folder's group.",
         "Only owners can delete or rename items inside."

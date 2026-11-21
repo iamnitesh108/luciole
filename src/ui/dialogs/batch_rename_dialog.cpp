@@ -114,7 +114,7 @@ BatchRenameDialog::BatchRenameDialog(
   setDirection(FlexDirection::Vertical);
   setAlign(FlexAlign::Stretch);
   luciole::applyDialogStyle(*this);
-  addChild(luciole::dialogHeader(std::format("Rename {} items", count), "forms", std::move(close)));
+  addChild(luciole::dialogHeader(std::format("Rename {} Items", count), "forms", std::move(close)));
   auto scroll =
       ui::scrollView({.out = &m_scroll, .viewportPaddingH = 0.0F, .viewportPaddingV = 0.0F, .flexGrow = 1.0F});
   scroll->content()->setAlign(FlexAlign::Stretch);
@@ -134,7 +134,7 @@ BatchRenameDialog::BatchRenameDialog(
                .onChange = [this](std::size_t) { changed(); }}
           ),
           ui::toggle({.out = &m_extensions, .checkedImmediate = true, .onChange = [this](bool) { changed(); }}),
-          ui::label({.text = "Keep extensions", .fontSize = Style::fontSizeCaption})
+          ui::label({.text = "Keep Extensions", .fontSize = Style::fontSizeCaption})
       )
   );
   const auto edit = [this](const std::string&) { changed(); };
@@ -158,7 +158,7 @@ BatchRenameDialog::BatchRenameDialog(
               )
           ),
           ui::row(
-              {.align = FlexAlign::Center, .gap = Style::spaceSm}, ui::label({.text = "Start at"}),
+              {.align = FlexAlign::Center, .gap = Style::spaceSm}, ui::label({.text = "Start At"}),
               ui::stepper(
                   {.out = &m_start,
                    .minValue = 0,
@@ -199,8 +199,8 @@ BatchRenameDialog::BatchRenameDialog(
   body->addChild(
       ui::row(
           {.align = FlexAlign::Center, .gap = Style::spaceMd},
-          ui::label({.text = "Current name", .fontSize = Style::fontSizeCaption, .flexGrow = 1.0F}),
-          ui::label({.text = "New name", .fontSize = Style::fontSizeCaption, .flexGrow = 1.0F})
+          ui::label({.text = "Current Name", .fontSize = Style::fontSizeCaption, .flexGrow = 1.0F}),
+          ui::label({.text = "New Name", .fontSize = Style::fontSizeCaption, .flexGrow = 1.0F})
       )
   );
   body->addChild(
@@ -228,7 +228,7 @@ BatchRenameDialog::BatchRenameDialog(
           {.align = FlexAlign::Center, .justify = FlexJustify::End, .gap = Style::spaceSm},
           ui::button(
               {.out = &m_report,
-               .text = "Copy report",
+               .text = "Copy Report",
                .variant = ButtonVariant::Ghost,
                .visible = false,
                .participatesInLayout = false,

@@ -124,6 +124,24 @@ namespace {
     fixture.write("config.toml", "[browser]\nswitch_to_new_tab = true\n");
     TEST_CHECK(restored.reload() && restored.settings().browser.switchToNewTab);
   }
+  void testSingleClickLocationEditPreference() {
+    Fixture fixture;
+    luciole::ConfigService service(fixture.paths());
+    TEST_CHECK(service.reload() && !service.settings().browser.singleClickLocationEdit);
+    fixture.write("config.toml", "[browser]\nsingle_click_location_edit = true\n");
+    TEST_CHECK(service.reload() && service.settings().browser.singleClickLocationEdit);
+    const std::array off{luciole::OverrideEdit{luciole::BrowserPreference::SingleClickLocationEdit, false}};
+    TEST_CHECK(service.saveOverrides(off) == luciole::AtomicWriteState::Durable);
+    luciole::ConfigService restored(fixture.paths());
+    TEST_CHECK(restored.reload() && !restored.settings().browser.singleClickLocationEdit);
+    const std::array reset{luciole::OverrideEdit{luciole::BrowserPreference::SingleClickLocationEdit, std::nullopt}};
+    TEST_CHECK(restored.saveOverrides(reset) == luciole::AtomicWriteState::Durable);
+    TEST_CHECK(restored.reload() && restored.settings().browser.singleClickLocationEdit);
+    fixture.write("config.toml", "[browser]\nsingle_click_location_edit = 'true'\n");
+    TEST_CHECK(!restored.reload() && restored.settings().browser.singleClickLocationEdit);
+    fixture.write("config.toml", "[browser]\nsingle_click_location_edit = false\n");
+    TEST_CHECK(restored.reload() && !restored.settings().browser.singleClickLocationEdit);
+  }
   void testDeletionConfirmationPreference() {
     Fixture fixture;
     luciole::ConfigService service(fixture.paths());
@@ -1267,6 +1285,7 @@ int main() {
     testFilenameTruncation();
     testBackupPreference();
     testNewTabPreference();
+    testSingleClickLocationEditPreference();
     testDeletionConfirmationPreference();
     testPermanentDeletionMenuPreference();
     testRestoreLastWindowPreference();

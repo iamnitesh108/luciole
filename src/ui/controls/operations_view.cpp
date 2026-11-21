@@ -37,7 +37,7 @@ public:
         ui::row(
             {.align = FlexAlign::Center, .justify = FlexJustify::End, .gap = Style::spaceXs},
             button(&m_details, "Details", ActivityAction::Details), button(&m_cancel, "Cancel", ActivityAction::Cancel),
-            button(&m_review, "Review", ActivityAction::Review), button(&m_retry, "Retry failed", ActivityAction::Retry)
+            button(&m_review, "Review", ActivityAction::Review), button(&m_retry, "Retry Failed", ActivityAction::Retry)
         )
     );
     addChild(ui::separator({}));

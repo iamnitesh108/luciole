@@ -15,7 +15,12 @@ class OperationJob;
 class PageContext;
 class SubmenuController;
 
-// New items: the New Document submenu of the file menu, the create file/folder dialog and the link dialog.
+namespace luciole {
+  struct ClipboardImage;
+} // namespace luciole
+
+// New items: the New Document submenu of the file menu, the create file/folder dialog, the pasted image dialog and the
+// link dialog.
 class CreateController {
 public:
   CreateController(PageContext& page, luciole::TemplateCatalog& templates, SubmenuController& submenus);
@@ -24,6 +29,8 @@ public:
       luciole::Location parent, luciole::CreateKind kind, std::optional<luciole::DocumentTemplate> source = std::nullopt
   );
   void openLinkDialog(const luciole::DirectoryEntry& target);
+  // Pastes a clipboard image: asks for a name, then writes the bytes through the creation job.
+  void openImagePaste(luciole::ClipboardImage image, luciole::Location parent);
   // Fills the opening New Document submenu with the templates, which load meanwhile.
   void openDocumentMenu(const luciole::ActionRequest& request);
   // The New Document submenu closed.

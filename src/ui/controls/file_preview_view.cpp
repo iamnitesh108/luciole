@@ -179,7 +179,7 @@ void FilePreviewView::sync(
     metadata.push_back({"Type", type});
     if (entry->size && entry->type != luciole::FileType::Directory) {
       const luciole::GString size(g_format_size_full(*entry->size, G_FORMAT_SIZE_IEC_UNITS));
-      metadata.push_back({"File size", size.get()});
+      metadata.push_back({"File Size", size.get()});
     }
     if (snapshot.totals.phase != luciole::FolderTotalsPhase::Idle) {
       metadata.push_back({"Contents", folderContentsLine(snapshot.totals)});
