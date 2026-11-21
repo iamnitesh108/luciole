@@ -234,6 +234,12 @@ namespace {
     );
   }
   State containing(const C&, const R& r) { return require(single(r), "Select exactly one item."); }
+  State linkTarget(const C& c, const R& r) {
+    return require(
+        single(r) && c.model.entry(r.targets.front().id)->symlink && !r.targets.front().location.isTrash(),
+        "Select one link."
+    );
+  }
   State originalLocation(const C& c, const R& r) {
     if (!single(r)) {
       return unavailable("Select exactly one item.");
@@ -447,6 +453,11 @@ namespace {
        .shortcut = "",
        .scope = S::Targets,
        .rule = originalLocation},
+      {.action = A::ShowLinkTarget,
+       .label = "Show Link Target",
+       .shortcut = "",
+       .scope = S::Targets,
+       .rule = linkTarget},
       {.action = A::Pin,
        .label = "Pin to Sidebar",
        .shortcut = "",
@@ -686,6 +697,7 @@ bool luciole::chooserAction(BrowserAction action) {
   case A::OpenWith:
   case A::ContainingFolder:
   case A::OriginalLocation:
+  case A::ShowLinkTarget:
   case A::Pin:
   case A::Unpin:
   case A::CutFiles:

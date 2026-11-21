@@ -58,6 +58,7 @@ test_table = [
   {'name': 'miller-columns', 'deps': [browser_dep, event_loop_dep], 'env': gio_env},
   {'name': 'navigation-services', 'deps': [browser_dep, platform_dep, event_loop_dep], 'env': gio_env},
   {'name': 'folder-totals', 'deps': [fs_dep], 'timeout': 60, 'env': gio_env},
+  {'name': 'link-target', 'deps': [fs_dep], 'env': gio_env},
   {'name': 'selection-details', 'deps': [browser_dep, event_loop_dep], 'timeout': 60, 'env': gio_env},
   {'name': 'settings', 'deps': [config_dep, browser_dep], 'env': ['G_DEBUG=fatal-warnings']},
   {'name': 'atomic-file', 'deps': [fs_dep]},

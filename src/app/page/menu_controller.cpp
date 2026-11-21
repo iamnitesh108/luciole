@@ -200,6 +200,9 @@ std::vector<ContextMenuControlEntry> MenuController::itemMenuEntries(const lucio
     if (single->trashInfo().original) {
       add(Action::OriginalLocation);
     }
+    if (single->symlink && !trash) {
+      add(Action::ShowLinkTarget);
+    }
   }
   addSeparator(entries);
   const bool folders = std::ranges::all_of(request.targets, [&model](const auto& target) {

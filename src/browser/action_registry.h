@@ -49,6 +49,7 @@ namespace luciole {
     Open,
     ContainingFolder,
     OriginalLocation,
+    ShowLinkTarget,
     Pin,
     Unpin,
     CutFiles,

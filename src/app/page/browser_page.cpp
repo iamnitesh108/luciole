@@ -16,7 +16,9 @@
 #include "core/timer_manager.h"
 #include "core/ui_phase.h"
 #include "cursor-shape-v1-client-protocol.h"
+#include "fs/background_job.h"
 #include "fs/gio_ptr.h"
+#include "fs/link_target.h"
 #include "model/details_columns.h"
 #include "operations/archive_service.h"
 #include "operations/batch_rename_service.h"
@@ -1509,6 +1511,8 @@ void BrowserPage::runAction(
        [](BrowserPage& page, const Call& call) { page.showContaining(call.targets.front().location()); }},
       {Action::OriginalLocation,
        [](BrowserPage& page, const Call& call) { page.showContaining(*call.targets.front().trashInfo().original); }},
+      {Action::ShowLinkTarget,
+       [](BrowserPage& page, const Call& call) { page.showLinkTarget(call.targets.front().location()); }},
       {Action::Pin, [](BrowserPage& page, const Call& call) { page.pinTargets(call.targets); }},
       {Action::Unpin, [](BrowserPage& page, const Call& call) { page.unpinTargets(call.targets); }},
       {Action::CutFiles, fileClipboard},
@@ -1842,6 +1846,25 @@ void BrowserPage::showContaining(const luciole::Location& location) {
   }
   browser().open(*parent);
   revealItems({location}, false);
+}
+
+void BrowserPage::showLinkTarget(const luciole::Location& link) {
+  const auto context = browser().contextSerial();
+  const std::weak_ptr<int> lifetime = m_lifetime;
+  luciole::runJob<luciole::Location>(
+      [link] { return luciole::linkTarget(link); },
+      [this, lifetime, context](luciole::JobResult<luciole::Location> result) {
+        // Navigating away meanwhile cancels the jump.
+        if (lifetime.expired() || context != browser().contextSerial()) {
+          return;
+        }
+        if (result) {
+          showContaining(*result);
+        } else {
+          actionError(result.error().message);
+        }
+      }
+  );
 }
 
 void BrowserPage::applySettings(const luciole::BrowserSettings& settings, bool force) {

@@ -275,6 +275,8 @@ private:
   void operationProgressTick();
 
   void showContaining(const luciole::Location& location);
+  // Opens the folder holding `link`'s target and selects it, once a worker has read the link.
+  void showLinkTarget(const luciole::Location& link);
 
   void applySettings(const luciole::BrowserSettings& settings, bool force) override;
 
