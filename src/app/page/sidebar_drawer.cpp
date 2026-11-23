@@ -23,9 +23,6 @@ std::unique_ptr<Button> SidebarController::buildToggle() {
        .glyph = "layout-sidebar",
        .glyphSize = Style::baseGlyphSize,
        .variant = ButtonVariant::Ghost,
-       .tooltip = "Show sidebar (F9)",
-       .visible = false,
-       .participatesInLayout = false,
        .onClick = [this] { toggle(); }}
   );
 }
