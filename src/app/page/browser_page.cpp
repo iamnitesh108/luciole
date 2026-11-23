@@ -2069,7 +2069,8 @@ void BrowserPage::setViewMode(luciole::ViewMode mode) {
   if (mode == m_viewMode) {
     return;
   }
-  if (m_list != nullptr) {
+  // Taking focus from a text field would end its edit and drop the path being typed.
+  if (m_list != nullptr && !m_locationBar.textFocused()) {
     dispatcher().setFocus(m_list->focusArea());
   }
   if (m_folderView.saveViewMode(mode)) {
