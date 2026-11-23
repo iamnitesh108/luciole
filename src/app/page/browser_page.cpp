@@ -1280,7 +1280,11 @@ bool BrowserPage::shortcutKey(const KeyboardEvent& event) {
   if (!editing && (m_detailsHeader.menuKey(event) || m_fileKeys.commandKey(event))) {
     return true;
   }
-  if (!editing && dispatchShortcut(event, {Action::Grid, Action::List, Action::Miller, Action::ShowHidden})) {
+  // View chords cannot be plain text keys, so they switch the view even while typing in a field.
+  if (dispatchShortcut(event, {Action::Grid, Action::List, Action::Miller})) {
+    return true;
+  }
+  if (!editing && dispatchShortcut(event, {Action::ShowHidden})) {
     return true;
   }
   if (m_list != nullptr
