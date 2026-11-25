@@ -23,7 +23,13 @@ std::unique_ptr<Button> SidebarController::buildToggle() {
        .glyph = "layout-sidebar",
        .glyphSize = Style::baseGlyphSize,
        .variant = ButtonVariant::Ghost,
-       .onClick = [this] { toggle(); }}
+       .onClick = [this] {
+         toggle();
+         // A pointer click leaves no keyboard focus behind; give it to the file list so shortcuts like F2 work.
+         if (!m_state.compact()) {
+           m_page.dispatcher().setFocus(m_page.fileList()->focusArea());
+         }
+       }}
   );
 }
 
