@@ -435,7 +435,8 @@ std::optional<DragDropController::DropTarget> DragDropController::dropTarget() c
       }
     }
   }
-  if (m_page.upButton().containsScenePoint(m_page.pointerX(), m_page.pointerY())
+  if (m_page.upButton().visible()
+      && m_page.upButton().containsScenePoint(m_page.pointerX(), m_page.pointerY())
       && m_page.browser().model().snapshot().location) {
     if (const auto location = m_page.browser().model().snapshot().location->parent()) {
       if (validDropFolder(*location)) {

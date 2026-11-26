@@ -783,6 +783,62 @@ void MenuController::showContextMenu(
   m_scroll = scroll;
 }
 
+void MenuController::openToolbarMenu(const LayoutRect& anchor, luciole::ToolbarItem item) {
+  using luciole::ToolbarItem;
+  using P = luciole::BrowserPreference;
+  constexpr int kMoveLeft = 1, kMoveRight = 2, kResetOrder = 3, kFirstToggle = 10;
+  const auto& settings = m_page.settings();
+  const int left = Style::rtl() ? 1 : -1;
+  const auto shown = [this](ToolbarItem candidate) { return m_page.toolbarItemShown(candidate); };
+  const auto moved = [&settings, item, shown](int direction) {
+    return luciole::moveToolbarItem(settings.toolbarOrder, item, direction, shown);
+  };
+  // The buttons Settings can hide, each with the preference that shows it.
+  const std::array<std::pair<ToolbarItem, luciole::PreferenceKey<bool>>, 4> toggles{
+      {{ToolbarItem::Sidebar, P::ShowSidebarButton},
+       {ToolbarItem::Parent, P::ShowParentButton},
+       {ToolbarItem::Sort, P::ShowSortButton},
+       {ToolbarItem::View, P::ShowViewSwitch}}
+  };
+  std::vector<ContextMenuControlEntry> entries{
+      {.id = kMoveLeft, .label = "Move Left", .enabled = moved(left).has_value(), .glyph = "arrow-left"},
+      {.id = kMoveRight, .label = "Move Right", .enabled = moved(-left).has_value(), .glyph = "arrow-right"},
+      {.label = "", .separator = true}
+  };
+  for (std::size_t index = 0; index < toggles.size(); ++index) {
+    const auto& [candidate, key] = toggles[index];
+    entries.push_back(
+        {.id = kFirstToggle + static_cast<int>(index),
+         .label = std::string(luciole::toolbarItemLabel(candidate)),
+         .checkmark = true,
+         .toggleState = luciole::preferenceValue(settings, key) ? 1 : 0}
+    );
+  }
+  entries.push_back({.label = "", .separator = true});
+  entries.push_back(
+      {.id = kResetOrder,
+       .label = "Reset Button Order",
+       .enabled = settings.toolbarOrder != luciole::kDefaultToolbarOrder,
+       .glyph = "refresh"}
+  );
+  showContextMenu(
+      std::move(entries),
+      [this, toggles, moved, left](int id) {
+        if (id == kMoveLeft || id == kMoveRight) {
+          if (const auto order = moved(id == kMoveLeft ? left : -left)) {
+            m_preferences.submit({{P::ToolbarOrder, *order}});
+          }
+        } else if (id == kResetOrder) {
+          m_preferences.submit({{P::ToolbarOrder, luciole::kDefaultToolbarOrder}});
+        } else if (id >= kFirstToggle && id < kFirstToggle + static_cast<int>(toggles.size())) {
+          const auto key = toggles[static_cast<std::size_t>(id - kFirstToggle)].second;
+          m_preferences.submit({{key, !luciole::preferenceValue(m_page.settings(), key)}});
+        }
+      },
+      anchor
+  );
+}
+
 void MenuController::openColumnsMenu(const LayoutRect& anchor, std::optional<luciole::DetailsColumn> column) {
   std::vector<ContextMenuControlEntry> entries{
       {.label = "Name", .enabled = false, .checkmark = true, .toggleState = 1, .glyph = "text-caption"}

@@ -5,6 +5,7 @@
 #include "fs/atomic_file.h"
 #include "model/directory_options.h"
 #include "model/thumbnail_options.h"
+#include "model/toolbar_layout.h"
 
 #include <concepts>
 #include <cstdint>
@@ -36,6 +37,12 @@ namespace luciole {
     bool compactMenus = true;
     bool contextMenuIcons = true;
     bool showCloseButtons = true;
+    bool showSidebarButton = true;
+    bool showParentButton = true;
+    bool showSortButton = true;
+    bool showViewSwitch = true;
+    OperationsButton operationsButton = OperationsButton::Always;
+    ToolbarOrder toolbarOrder = kDefaultToolbarOrder;
     bool reduceAnimations = false;
     bool useSSD = true;
     bool showFolderInTitle = true; // Browser windows title themselves after the shown folder.
@@ -103,6 +110,12 @@ namespace luciole {
     CompactMenus,
     ContextMenuIcons,
     ShowCloseButtons,
+    ShowSidebarButton,
+    ShowParentButton,
+    ShowSortButton,
+    ShowViewSwitch,
+    OperationsButton,
+    ToolbarOrder,
     ReduceAnimations,
     UseSSD,
     ShowFolderInTitle,
@@ -207,6 +220,12 @@ namespace luciole {
     static constexpr PreferenceKey<bool> CompactMenus{Id::CompactMenus};
     static constexpr PreferenceKey<bool> ContextMenuIcons{Id::ContextMenuIcons};
     static constexpr PreferenceKey<bool> ShowCloseButtons{Id::ShowCloseButtons};
+    static constexpr PreferenceKey<bool> ShowSidebarButton{Id::ShowSidebarButton};
+    static constexpr PreferenceKey<bool> ShowParentButton{Id::ShowParentButton};
+    static constexpr PreferenceKey<bool> ShowSortButton{Id::ShowSortButton};
+    static constexpr PreferenceKey<bool> ShowViewSwitch{Id::ShowViewSwitch};
+    static constexpr PreferenceKey<luciole::OperationsButton> OperationsButton{Id::OperationsButton};
+    static constexpr PreferenceKey<luciole::ToolbarOrder> ToolbarOrder{Id::ToolbarOrder};
     static constexpr PreferenceKey<bool> ReduceAnimations{Id::ReduceAnimations};
     static constexpr PreferenceKey<bool> UseSSD{Id::UseSSD};
     static constexpr PreferenceKey<bool> ShowFolderInTitle{Id::ShowFolderInTitle};
@@ -297,8 +316,8 @@ namespace luciole {
     BrowserPreferenceId m_preference;
     std::variant<
         std::monostate, bool, int, double, SortField, ViewMode, ViewDensity, FilenameTruncation, DetailsColumnOrder,
-        ActivationMode, TypingMode, DropAction, ThumbnailPolicy, ChooserStartFolder, ColorScheme, std::string,
-        KeybindConfig>
+        ToolbarOrder, ActivationMode, TypingMode, DropAction, ThumbnailPolicy, ChooserStartFolder, ColorScheme,
+        OperationsButton, std::string, KeybindConfig>
         m_value;
   };
 
