@@ -1006,7 +1006,7 @@ namespace {
   }
   void testCompressedFile(const Fixture& fixture, Pump& pump) {
     TEST_CHECK(!luciole::compressedFileName(location(fixture.root / "package.TAR.gz")));
-    for (const auto [suffix, filter] : {std::pair{".gz", ARCHIVE_FILTER_GZIP}, std::pair{".xz", ARCHIVE_FILTER_XZ}}) {
+    for (const auto& [suffix, filter] : {std::pair{".gz", ARCHIVE_FILTER_GZIP}, std::pair{".xz", ARCHIVE_FILTER_XZ}}) {
       const auto path = fixture.root / ("dump.SQL" + std::string(suffix));
       {
         const std::unique_ptr<struct archive, decltype(&archive_write_free)> writer(

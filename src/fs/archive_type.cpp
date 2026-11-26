@@ -68,7 +68,7 @@ std::optional<std::string> luciole::compressedFileName(const Location& location)
   }
   const luciole::GString lower(g_ascii_strdown(name->c_str(), -1));
   const std::string_view text(lower.get());
-  for (const auto [suffix, compression] :
+  for (const auto& [suffix, compression] :
        {std::pair{std::string_view(".gz"), ArchiveCompression::Gzip},
         std::pair{std::string_view(".bz2"), ArchiveCompression::Bzip2},
         std::pair{std::string_view(".xz"), ArchiveCompression::Xz},

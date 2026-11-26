@@ -696,7 +696,7 @@ namespace {
     for (const char* const name : {"a.tbz2", "a.tbz", "a.tzst", "a.txz"}) {
       TEST_CHECK(luciole::archiveFolderName(luciole::Location::fromPath(std::string("/tmp/") + name)) == "a");
     }
-    for (const auto [name, compression] :
+    for (const auto& [name, compression] :
          {std::pair{"/tmp/plain.bz2", luciole::ArchiveCompression::Bzip2},
           std::pair{"/tmp/plain.zst", luciole::ArchiveCompression::Zstd},
           std::pair{"/tmp/plain.xz", luciole::ArchiveCompression::Xz}}) {
