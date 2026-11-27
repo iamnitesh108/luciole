@@ -548,11 +548,21 @@ namespace {
     TEST_CHECK(!R::state(A::OpenWith, context, R::capture(context)).enabled);
     model.select(6);
     TEST_CHECK(
-        !R::state(A::OpenWith, context, R::capture(context)).enabled
+        R::state(A::OpenWith, context, R::capture(context)).enabled
         && R::state(A::QuickPreview, context, R::capture(context)).enabled
     );
+    model.select(1, luciole::SelectionMode::Toggle);
+    TEST_CHECK(R::state(A::OpenWith, context, R::capture(context)).enabled);
     model.selectAll();
     TEST_CHECK(!R::state(A::QuickPreview, context, R::capture(context)).enabled);
+    test::editEntries(changed, [&](auto& entries) {
+      entries[2].access.read = true;
+      entries[5].access.read = false;
+    });
+    ++changed.generation;
+    model.applySnapshot(changed);
+    model.select(6);
+    TEST_CHECK(!R::state(A::OpenWith, context, R::capture(context)).enabled);
     ++context.context;
     TEST_CHECK(!R::state(A::OpenWith, context, request).enabled);
   }

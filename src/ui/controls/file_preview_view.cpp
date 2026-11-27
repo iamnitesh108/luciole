@@ -285,7 +285,11 @@ void FilePreviewView::sync(
   m_statusPill->setParticipatesInLayout(status);
   m_text->setText(snapshot.text);
   m_open->setEnabled(entry.has_value());
-  m_openWith->setEnabled(entry && entry->type == luciole::FileType::Regular && !entry->symlink);
+  m_openWith->setEnabled(
+      entry
+      && (entry->type == luciole::FileType::Regular || entry->type == luciole::FileType::Directory)
+      && !entry->symlink
+  );
 }
 bool FilePreviewView::showsImage() const { return m_stage->visible() && m_image->visible(); }
 void FilePreviewView::clear(Renderer& renderer) { m_image->releaseFile(renderer); }

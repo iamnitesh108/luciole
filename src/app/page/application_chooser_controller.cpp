@@ -57,9 +57,10 @@ void ApplicationChooserController::show(const std::vector<luciole::DirectoryEntr
   std::ranges::sort(session->types);
   const auto duplicates = std::ranges::unique(session->types);
   session->types.erase(duplicates.begin(), duplicates.end());
-  session->canSetDefault = session->types.size() == 1
-      && !session->types.front().empty()
-      && session->types.front() != "application/octet-stream";
+  // A folder default is the system file manager, too far-reaching for a per-item choice.
+  const bool singleFileType = session->types.size() == 1 && session->types.front() != "inode/directory";
+  session->canSetDefault =
+      singleFileType && !session->types.front().empty() && session->types.front() != "application/octet-stream";
   Flex* choices = nullptr;
   ScrollView* choiceScroll = nullptr;
   Input* search = nullptr;
@@ -111,12 +112,12 @@ void ApplicationChooserController::show(const std::vector<luciole::DirectoryEntr
                  }
                }}
       ),
-      ui::separator({.visible = session->types.size() == 1, .participatesInLayout = session->types.size() == 1}),
+      ui::separator({.visible = singleFileType, .participatesInLayout = singleFileType}),
       ui::row(
           {.align = FlexAlign::Center,
            .gap = Style::spaceSm,
-           .visible = session->types.size() == 1,
-           .participatesInLayout = session->types.size() == 1},
+           .visible = singleFileType,
+           .participatesInLayout = singleFileType},
           ui::label({.text = "Use as Default for This File Type", .maxLines = 2, .flexGrow = 1}),
           ui::toggle(
               {.out = &useDefault,

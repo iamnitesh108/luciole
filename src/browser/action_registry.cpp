@@ -335,10 +335,12 @@ namespace {
             && all(
                 c, r,
                 [](const DirectoryEntry& entry) {
-                  return entry.type == FileType::Regular && !entry.symlink && entry.access.read != false;
+                  return (entry.type == FileType::Regular || entry.type == FileType::Directory)
+                      && !entry.symlink
+                      && entry.access.read != false;
                 }
             ),
-        "Select readable files."
+        "Select readable files or folders."
     );
   }
   bool sortField(const C& c, luciole::SortField field) { return c.model.sort().field == field; }
