@@ -380,8 +380,9 @@ namespace {
     TransferResult result;
     Info captured, destinationStamp;
     std::vector<std::unique_ptr<Node>> children;
-    // `created` marks a destination folder this job made to publish a device folder item by item.
-    bool merged = false, published = false, mergeRetired = false, created = false;
+    // `created` marks a destination folder this job made to publish a device folder item by item. Items `inCreated`
+    // are copied, then their history and source removal are handled once by the outermost created folder.
+    bool merged = false, published = false, mergeRetired = false, created = false, inCreated = false;
     std::shared_ptr<const ProviderCopyEffect> mergeSource, mergeOwner;
     std::size_t sourceIndex;
     Node(Location source, Location parent, std::size_t index)
@@ -494,7 +495,9 @@ struct luciole::ProviderTransfer::State {
   bool collectingRemote = false;
   provider_history::Budget historyBudget;
   std::vector<std::shared_ptr<const ProviderCopyEffect>> remoteEffects;
-  TransferAction actionFor(const Node& node) const { return node.mergeOwner ? TransferAction::Copy : request.action; }
+  TransferAction actionFor(const Node& node) const {
+    return node.mergeOwner || node.inCreated ? TransferAction::Copy : request.action;
+  }
   void disableRemoteHistory() {
     collectingRemote = false;
     // Keep proofs alive until all forward effects finish, even when optional history becomes unavailable.
@@ -539,9 +542,8 @@ struct luciole::ProviderTransfer::State {
       auto proof = work.prepareCopy
           ? work.prepareCopy(node.sourceIndex, target, parent.get(), stage.fd(), previous.has_value())
           : nullptr;
-      auto operation = work.operationHistory
-          ? work.operationHistory->prepareNative(node.source, target, stage.fd(), "item")
-          : nullptr;
+      auto* history = node.inCreated ? nullptr : work.operationHistory;
+      auto operation = history ? history->prepareNative(node.source, target, stage.fd(), "item") : nullptr;
       work.check();
       validateDestination();
       if (previous) {
@@ -571,8 +573,8 @@ struct luciole::ProviderTransfer::State {
       if (proof && work.recordCopy) {
         work.recordCopy(proof, stage.fd());
       }
-      if (work.operationHistory) {
-        work.operationHistory->published(operation, previous.has_value());
+      if (history) {
+        history->published(operation, previous.has_value());
       }
       node.destinationStamp = info(target, work.token);
       if (!stage.clear()) {
@@ -666,7 +668,7 @@ struct luciole::ProviderTransfer::State {
     node.merged = true;
     node.result.destination = target;
     node.destinationStamp = std::move(existing);
-    if (operationHistory) {
+    if (operationHistory && !node.created) {
       operationHistory->beforeMerge(node.source);
     }
     if (request.action == TransferAction::Move && !node.mergeOwner && collectingRemote) {
@@ -685,6 +687,7 @@ struct luciole::ProviderTransfer::State {
       auto entry =
           std::make_unique<Node>(node.source.child(g_file_info_get_name(child.get())), target, node.sourceIndex);
       entry->mergeOwner = node.mergeSource ? node.mergeSource : node.mergeOwner;
+      entry->inCreated = node.created || node.inCreated;
       if (device) {
         entry->captured = std::move(child);
       }
@@ -694,6 +697,9 @@ struct luciole::ProviderTransfer::State {
   // Device folders publish each item as soon as it is verified, like other file managers: a disconnect keeps the
   // finished files and Retry copies only what is missing. The new folder is then filled like a merge.
   void createForItems(Node& node, const Location& target, const CancelToken& token) {
+    if (operationHistory && !node.inCreated) {
+      operationHistory->beforeTransfer(node.source, target);
+    }
     mkdir(target, token);
     node.created = true;
     try {
@@ -712,16 +718,45 @@ struct luciole::ProviderTransfer::State {
       throw FileErrorException(std::move(error));
     }
   }
-  // Records a completed device folder as one copied item, which replaces the history of the files published in it.
-  void finishCreated(const Node& node, const CancelToken& token) {
-    const auto& target = *node.result.destination;
-    copyFolderAttributes(node.captured.get(), target, token);
-    if (!operationHistory || actionFor(node) != TransferAction::Copy) {
+  // Records a completed device folder as one copied item; the files published inside it record nothing, so large
+  // folders stay within the history limits.
+  void recordCreated(const Node& node) {
+    if (!operationHistory || node.inCreated || actionFor(node) != TransferAction::Copy) {
       return;
     }
-    operationHistory->beforeTransfer(node.source, target);
+    const auto& target = *node.result.destination;
     const auto parent = checkedFd(::open(node.parent.nativePath()->c_str(), O_PATH | O_DIRECTORY | O_CLOEXEC));
     operationHistory->published(operationHistory->prepareNative(node.source, target, parent.get(), *target.basename()));
+  }
+  // Cut from a device copies every item first, flushes the destination once and only then deletes the sources, so a
+  // device item is never removed before its copy is durable.
+  void removeCopiedSources(Node& node, const CancelToken& token) {
+    const auto refresh = [&node] {
+      node.result.children.clear();
+      for (const auto& child : node.children) {
+        node.result.children.push_back(child->result);
+      }
+    };
+    try {
+      for (auto& child : node.children) {
+        if (child->result.outcome != TransferOutcome::Copied) {
+          continue;
+        }
+        if (child->created) {
+          removeCopiedSources(*child, token);
+          unchanged(child->captured.get(), info(child->source, token).get(), false);
+        } else {
+          unchanged(child->destinationStamp.get(), info(*child->result.destination, token).get());
+          unchanged(child->captured.get(), info(child->source, token).get());
+        }
+        erase(child->source, token);
+        child->result.outcome = TransferOutcome::Moved;
+      }
+    } catch (...) {
+      refresh();
+      throw;
+    }
+    refresh();
   }
   void executeMerge(
       Node& node, const CancelToken& token, std::atomic<std::uint64_t>& bytes, const Choose& choose,
@@ -755,16 +790,22 @@ struct luciole::ProviderTransfer::State {
         }
       }
     } else if (complete && action == TransferAction::Move) {
+      if (node.created) {
+        copyFolderAttributes(node.captured.get(), *node.result.destination, token);
+        writeback.flushAllPublished();
+        removeCopiedSources(node, token);
+      }
       unchanged(node.captured.get(), info(node.source, token).get(), false);
       erase(node.source, token);
-      if (operationHistory) {
+      if (operationHistory && !node.created) {
         operationHistory->removedMerge(node.source);
       }
     } else if (complete && action == TransferAction::Copy) {
       unchanged(node.captured.get(), info(node.source, token).get());
-    }
-    if (complete && node.created) {
-      finishCreated(node, token);
+      if (node.created) {
+        copyFolderAttributes(node.captured.get(), *node.result.destination, token);
+        recordCreated(node);
+      }
     }
     node.result.outcome = complete ? (action == TransferAction::Move ? TransferOutcome::Moved : TransferOutcome::Copied)
                                    : TransferOutcome::Partial;
@@ -940,10 +981,10 @@ struct luciole::ProviderTransfer::State {
         executeMerge(node, token, bytes, choose, nativeCopies, writeback, retry && alreadyMerged, depth);
         return;
       }
-      if (operationHistory) {
+      if (operationHistory && !node.inCreated) {
         operationHistory->beforeTransfer(node.source, target);
       }
-      if (nativeCopies && request.action == TransferAction::Copy && node.parent.isNative()) {
+      if (nativeCopies && (request.action == TransferAction::Copy || node.inCreated) && node.parent.isNative()) {
         download(node, target, parent.get(), existing.get(), *nativeCopies);
         return;
       }

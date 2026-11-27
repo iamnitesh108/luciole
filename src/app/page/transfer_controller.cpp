@@ -59,6 +59,9 @@ namespace {
         && std::ranges::any_of(sources, luciole::transferDeviceSource)) {
       return "Files from phones and cameras can only be copied or moved into local folders.";
     }
+    if (luciole::transferDeviceSource(destination) || destination.isDeviceRoot()) {
+      return "Files cannot be copied onto phones or cameras.";
+    }
     return "File transfers support local and mounted SFTP, SMB or WebDAV folders outside Trash.";
   }
   template <typename Callback> auto withTransferResults(const OperationJob& job, Callback callback) {
