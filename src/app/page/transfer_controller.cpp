@@ -28,7 +28,9 @@
 #include <algorithm>
 #include <chrono>
 #include <format>
+#include <optional>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -44,6 +46,20 @@ namespace {
     return result.outcome == luciole::TransferOutcome::Moved
         || result.outcome == luciole::TransferOutcome::Copied
         || result.outcome == luciole::TransferOutcome::Linked;
+  }
+  // Why the transfer job would refuse to move `sources` into `destination`, if it would.
+  std::optional<std::string_view>
+  transferProblem(const std::vector<luciole::Location>& sources, const luciole::Location& destination) {
+    if (std::ranges::all_of(sources, [&](const auto& source) {
+          return luciole::transferSupported(source, destination);
+        })) {
+      return std::nullopt;
+    }
+    if (luciole::transferLocationSupported(destination)
+        && std::ranges::any_of(sources, luciole::transferDeviceSource)) {
+      return "Files from phones and cameras can only be copied or moved into local folders.";
+    }
+    return "File transfers support local and mounted SFTP, SMB or WebDAV folders outside Trash.";
   }
   template <typename Callback> auto withTransferResults(const OperationJob& job, Callback callback) {
     if (job.kind() != JobKind::Restore) {
@@ -475,10 +491,8 @@ void TransferController::chooseDrop(
     finish(false);
     return;
   }
-  if (!luciole::transferLocationSupported(destination) || std::ranges::any_of(payload.locations, [](const auto& item) {
-        return !luciole::transferLocationSupported(item);
-      })) {
-    m_page.actionError("File transfers support local and mounted SFTP, SMB or WebDAV folders outside Trash.");
+  if (const auto problem = transferProblem(payload.locations, destination)) {
+    m_page.actionError(std::string(*problem));
     finish(false);
     return;
   }
@@ -854,12 +868,11 @@ std::shared_ptr<OperationJob> TransferController::startPayloadTransfer(
     m_page.setActionMessage({});
     return job;
   }
-  if (payload.locations.empty()
-      || !luciole::transferLocationSupported(destination)
-      || std::ranges::any_of(payload.locations, [](const auto& location) {
-           return !luciole::transferLocationSupported(location);
-         })) {
-    m_page.actionError("File transfers support local and mounted SFTP, SMB or WebDAV folders outside Trash.");
+  if (payload.locations.empty()) {
+    return nullptr;
+  }
+  if (const auto problem = transferProblem(payload.locations, destination)) {
+    m_page.actionError(std::string(*problem));
     return nullptr;
   }
   m_page.setActionMessage({});

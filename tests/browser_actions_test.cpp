@@ -237,6 +237,42 @@ namespace {
     model.applySnapshot(data);
     TEST_CHECK(R::state(A::CopyFiles, c, R::capture(c)).enabled);
     test::editEntries(data, [&](auto& entries) {
+      entries[0].place = luciole::Location::fromUri("mtp://Pixel_8/Internal%20shared%20storage/DCIM/photo.jpg");
+      entries[0].access.rename = true;
+    });
+    ++data.generation;
+    model.applySnapshot(data);
+    // Phone files copy and cut like other files; Pastes into the phone stay refused.
+    TEST_CHECK(R::state(A::CopyFiles, c, R::capture(c)).enabled && R::state(A::CutFiles, c, R::capture(c)).enabled);
+    {
+      luciole::DirectoryModel phone;
+      auto folder = snapshot();
+      folder.location = luciole::Location::fromUri("mtp://Pixel_8/Internal%20shared%20storage/DCIM");
+      phone.applySnapshot(folder);
+      luciole::ActionContext p{
+          .model = phone,
+          .context = 14,
+          .query = {},
+          .pinned = {},
+          .clipboardAvailable = true,
+          .clipboardHasFiles = true
+      };
+      TEST_CHECK(!R::state(A::PasteFiles, p, R::capture(p)).enabled);
+      test::editEntries(folder, [&](auto& entries) {
+        for (auto& item : entries) {
+          item.place = folder.location->child(item.name);
+        }
+      });
+      ++folder.generation;
+      phone.applySnapshot(folder);
+      phone.selectAll();
+      const auto all = R::capture(p);
+      // A whole phone folder selection copies and cuts like a single item.
+      TEST_CHECK(
+          all.targets.size() == 6 && R::state(A::CopyFiles, p, all).enabled && R::state(A::CutFiles, p, all).enabled
+      );
+    }
+    test::editEntries(data, [&](auto& entries) {
       entries[0].place = luciole::Location::fromUri("https://example.invalid/file");
     });
     ++data.generation;

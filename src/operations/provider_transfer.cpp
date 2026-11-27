@@ -144,15 +144,18 @@ namespace {
       }
     }
   }
-  std::vector<std::string> children(const Location& location, const CancelToken& token) {
+  // The folder's entries sorted by name, each with its name and `attributes`.
+  std::vector<Info> listing(const Location& location, std::string_view attributes, const CancelToken& token) {
+    const auto requested =
+        attributes.empty() ? std::string("standard::name") : std::string("standard::name,").append(attributes);
     GError* error = nullptr;
     const GioPtr<GFileEnumerator> reader(g_file_enumerate_children(
-        gioFile(location).get(), "standard::name", G_FILE_QUERY_INFO_NOFOLLOW_SYMLINKS, gioCancellable(token), &error
+        gioFile(location).get(), requested.c_str(), G_FILE_QUERY_INFO_NOFOLLOW_SYMLINKS, gioCancellable(token), &error
     ));
     if (!reader) {
       fail(error);
     }
-    std::vector<std::string> names;
+    std::vector<Info> entries;
     while (true) {
       check(token);
       Info child(g_file_enumerator_next_file(reader.get(), gioCancellable(token), &error));
@@ -166,16 +169,33 @@ namespace {
       if (!name || !validName(name)) {
         throwFileError(FileErrorKind::InvalidArgument, "Invalid provider filename.");
       }
-      names.emplace_back(name);
-      if (names.size() > 100000) {
+      entries.push_back(std::move(child));
+      if (entries.size() > 100000) {
         throwFileError(FileErrorKind::Unsupported, "The folder exceeds the transfer entry limit.");
       }
     }
     if (!g_file_enumerator_close(reader.get(), gioCancellable(token), &error)) {
       fail(error);
     }
-    std::ranges::sort(names);
+    std::ranges::sort(entries, std::less{}, [](const Info& entry) {
+      return std::string_view(g_file_info_get_name(entry.get()));
+    });
+    return entries;
+  }
+  std::vector<std::string> children(const Location& location, const CancelToken& token) {
+    std::vector<std::string> names;
+    for (const auto& entry : listing(location, {}, token)) {
+      names.emplace_back(g_file_info_get_name(entry.get()));
+    }
     return names;
+  }
+  // GVfs answers every info query on an MTP or PTP device with a USB request, and a listing already carries the same
+  // facts for each entry. Device sources therefore take their facts from listings instead of querying each item, and
+  // skip the check just before each copy, since validate() lists the copied tree again afterwards.
+  bool trustsListing(const Location& source) { return transferDeviceSource(source); }
+  // A copy of the facts a listing captured for `source`, so a capture does not query the device again.
+  Info listedFacts(const Location& source, GFileInfo* captured) {
+    return trustsListing(source) && captured ? Info(g_file_info_dup(captured)) : Info{};
   }
   void mkdir(const Location& location, const CancelToken& token) {
     GError* error = nullptr;
@@ -204,28 +224,48 @@ namespace {
     Info captured;
     std::vector<Tree> children;
   };
-  Tree capture(const Location& location, const CancelToken& token, std::size_t& count, unsigned depth = 0) {
+  Tree capture(
+      const Location& location, const CancelToken& token, std::size_t& count, unsigned depth = 0, Info listed = {}
+  ) {
     check(token);
     if (++count > 100000 || depth > 128) {
       throwFileError(FileErrorKind::Unsupported, "The transfer exceeds the folder depth or entry limit.");
     }
-    Tree tree{location, info(location, token), {}};
+    Tree tree{location, listed ? std::move(listed) : info(location, token), {}};
     const auto type = g_file_info_get_file_type(tree.captured.get());
     if (type != G_FILE_TYPE_REGULAR && type != G_FILE_TYPE_DIRECTORY && type != G_FILE_TYPE_SYMBOLIC_LINK) {
       throwFileError(FileErrorKind::Unsupported, "Special files cannot be transferred.");
     }
     if (folder(tree.captured.get())) {
-      for (const auto& name : children(location, token)) {
-        tree.children.push_back(capture(location.child(name), token, count, depth + 1));
+      if (trustsListing(location)) {
+        for (auto& entry : listing(location, kAttributes, token)) {
+          const auto child = location.child(g_file_info_get_name(entry.get()));
+          tree.children.push_back(capture(child, token, count, depth + 1, std::move(entry)));
+        }
+      } else {
+        for (const auto& name : children(location, token)) {
+          tree.children.push_back(capture(location.child(name), token, count, depth + 1));
+        }
       }
       unchanged(tree.captured.get(), info(location, token).get());
     }
     return tree;
   }
-  void validate(const Tree& tree, const CancelToken& token) {
+  void validate(const Tree& tree, const CancelToken& token, GFileInfo* listed = nullptr) {
     check(token);
-    unchanged(tree.captured.get(), info(tree.source, token).get());
-    if (folder(tree.captured.get())) {
+    unchanged(tree.captured.get(), listed ? listed : info(tree.source, token).get());
+    if (folder(tree.captured.get()) && trustsListing(tree.source)) {
+      const auto entries = listing(tree.source, kAttributes, token);
+      if (entries.size() != tree.children.size()) {
+        throwFileError(FileErrorKind::Changed, "Folder contents changed during the transfer.");
+      }
+      for (std::size_t index = 0; index < entries.size(); ++index) {
+        if (tree.children[index].source.basename() != g_file_info_get_name(entries[index].get())) {
+          throwFileError(FileErrorKind::Changed, "Folder contents changed during the transfer.");
+        }
+        validate(tree.children[index], token, entries[index].get());
+      }
+    } else if (folder(tree.captured.get())) {
       const auto names = children(tree.source, token);
       std::vector<std::string> expected;
       expected.reserve(tree.children.size());
@@ -238,50 +278,54 @@ namespace {
       }
     }
   }
+  // Applies the source folder's mode and modified time once its contents are written.
+  void copyFolderAttributes(GFileInfo* captured, const Location& target, const CancelToken& token) {
+    GError* queryError = nullptr;
+    const std::unique_ptr<GFileAttributeInfoList, decltype(&g_file_attribute_info_list_unref)> supported(
+        g_file_query_settable_attributes(gioFile(target).get(), gioCancellable(token), &queryError),
+        g_file_attribute_info_list_unref
+    );
+    if (!supported) {
+      if (queryError && g_error_matches(queryError, G_IO_ERROR, G_IO_ERROR_NOT_SUPPORTED)) {
+        g_error_free(queryError);
+        return;
+      }
+      fail(queryError);
+    }
+    Info attributes(g_file_info_new());
+    for (const auto* attribute : {G_FILE_ATTRIBUTE_UNIX_MODE, G_FILE_ATTRIBUTE_TIME_MODIFIED}) {
+      if (g_file_info_has_attribute(captured, attribute)
+          && g_file_attribute_info_list_lookup(supported.get(), attribute)) {
+        if (std::string_view(attribute) == G_FILE_ATTRIBUTE_UNIX_MODE) {
+          g_file_info_set_attribute_uint32(
+              attributes.get(), attribute, g_file_info_get_attribute_uint32(captured, attribute)
+          );
+        } else {
+          g_file_info_set_attribute_uint64(
+              attributes.get(), attribute, g_file_info_get_attribute_uint64(captured, attribute)
+          );
+        }
+      }
+    }
+    GError* error = nullptr;
+    if (!g_file_set_attributes_from_info(
+            gioFile(target).get(), attributes.get(), G_FILE_QUERY_INFO_NOFOLLOW_SYMLINKS, gioCancellable(token), &error
+        )) {
+      fail(error);
+    }
+  }
   void copy(const Tree& tree, const Location& target, const CancelToken& token, std::atomic<std::uint64_t>& bytes) {
     check(token);
     destinationName(*target.parent(), *target.basename());
-    unchanged(tree.captured.get(), info(tree.source, token).get());
+    if (!trustsListing(tree.source)) {
+      unchanged(tree.captured.get(), info(tree.source, token).get());
+    }
     if (folder(tree.captured.get())) {
       mkdir(target, token);
       for (const auto& child : tree.children) {
         copy(child, target.child(*child.source.basename()), token, bytes);
       }
-      GError* queryError = nullptr;
-      const std::unique_ptr<GFileAttributeInfoList, decltype(&g_file_attribute_info_list_unref)> supported(
-          g_file_query_settable_attributes(gioFile(target).get(), gioCancellable(token), &queryError),
-          g_file_attribute_info_list_unref
-      );
-      if (!supported) {
-        if (queryError && g_error_matches(queryError, G_IO_ERROR, G_IO_ERROR_NOT_SUPPORTED)) {
-          g_error_free(queryError);
-          return;
-        }
-        fail(queryError);
-      }
-      Info attributes(g_file_info_new());
-      for (const auto* attribute : {G_FILE_ATTRIBUTE_UNIX_MODE, G_FILE_ATTRIBUTE_TIME_MODIFIED}) {
-        if (g_file_info_has_attribute(tree.captured.get(), attribute)
-            && g_file_attribute_info_list_lookup(supported.get(), attribute)) {
-          if (std::string_view(attribute) == G_FILE_ATTRIBUTE_UNIX_MODE) {
-            g_file_info_set_attribute_uint32(
-                attributes.get(), attribute, g_file_info_get_attribute_uint32(tree.captured.get(), attribute)
-            );
-          } else {
-            g_file_info_set_attribute_uint64(
-                attributes.get(), attribute, g_file_info_get_attribute_uint64(tree.captured.get(), attribute)
-            );
-          }
-        }
-      }
-      GError* error = nullptr;
-      if (!g_file_set_attributes_from_info(
-              gioFile(target).get(), attributes.get(), G_FILE_QUERY_INFO_NOFOLLOW_SYMLINKS, gioCancellable(token),
-              &error
-          )) {
-        fail(error);
-      }
-
+      copyFolderAttributes(tree.captured.get(), target, token);
     } else {
       GError* error = nullptr;
       std::pair<std::atomic<std::uint64_t>*, goffset> progress{&bytes, 0};
@@ -336,7 +380,8 @@ namespace {
     TransferResult result;
     Info captured, destinationStamp;
     std::vector<std::unique_ptr<Node>> children;
-    bool merged = false, published = false, mergeRetired = false;
+    // `created` marks a destination folder this job made to publish a device folder item by item.
+    bool merged = false, published = false, mergeRetired = false, created = false;
     std::shared_ptr<const ProviderCopyEffect> mergeSource, mergeOwner;
     std::size_t sourceIndex;
     Node(Location source, Location parent, std::size_t index)
@@ -471,7 +516,7 @@ struct luciole::ProviderTransfer::State {
     transfer::Stage stage(parent.get(), work);
     try {
       std::size_t count = 0;
-      auto tree = capture(node.source, work.token, count);
+      auto tree = capture(node.source, work.token, count, 0, listedFacts(node.source, node.captured.get()));
       copy(tree, node.parent.child(stage.name()).child("item"), work.token, work.bytes);
       validate(tree, work.token);
       const auto validateDestination = [&] {
@@ -565,7 +610,7 @@ struct luciole::ProviderTransfer::State {
       return {};
     }
     std::size_t count = 0;
-    auto tree = capture(node.source, token, count);
+    auto tree = capture(node.source, token, count, 0, listedFacts(node.source, node.captured.get()));
     copy(tree, item, token, bytes);
     validate(tree, token);
     return tree;
@@ -632,14 +677,51 @@ struct luciole::ProviderTransfer::State {
         disableRemoteHistory();
       }
     }
-    for (const auto& child : children(node.source, token)) {
+    const bool device = trustsListing(node.source);
+    for (auto& child : listing(node.source, device ? kAttributes : "", token)) {
       if (++entries > 100000) {
         throwFileError(FileErrorKind::Unsupported, "The transfer entry limit was reached.");
       }
-      auto entry = std::make_unique<Node>(node.source.child(child), target, node.sourceIndex);
+      auto entry =
+          std::make_unique<Node>(node.source.child(g_file_info_get_name(child.get())), target, node.sourceIndex);
       entry->mergeOwner = node.mergeSource ? node.mergeSource : node.mergeOwner;
+      if (device) {
+        entry->captured = std::move(child);
+      }
       node.children.push_back(std::move(entry));
     }
+  }
+  // Device folders publish each item as soon as it is verified, like other file managers: a disconnect keeps the
+  // finished files and Retry copies only what is missing. The new folder is then filled like a merge.
+  void createForItems(Node& node, const Location& target, const CancelToken& token) {
+    mkdir(target, token);
+    node.created = true;
+    try {
+      prepareMerge(node, target, info(target, token), token);
+    } catch (...) {
+      auto error = currentFileError();
+      node.created = node.merged = false;
+      node.children.clear();
+      node.result.destination.reset();
+      node.destinationStamp.reset();
+      try {
+        erase(target, CancelToken{});
+      } catch (const FileErrorException&) {
+        error.message += " An empty folder remains at " + target.uri();
+      }
+      throw FileErrorException(std::move(error));
+    }
+  }
+  // Records a completed device folder as one copied item, which replaces the history of the files published in it.
+  void finishCreated(const Node& node, const CancelToken& token) {
+    const auto& target = *node.result.destination;
+    copyFolderAttributes(node.captured.get(), target, token);
+    if (!operationHistory || actionFor(node) != TransferAction::Copy) {
+      return;
+    }
+    operationHistory->beforeTransfer(node.source, target);
+    const auto parent = checkedFd(::open(node.parent.nativePath()->c_str(), O_PATH | O_DIRECTORY | O_CLOEXEC));
+    operationHistory->published(operationHistory->prepareNative(node.source, target, parent.get(), *target.basename()));
   }
   void executeMerge(
       Node& node, const CancelToken& token, std::atomic<std::uint64_t>& bytes, const Choose& choose,
@@ -680,6 +762,9 @@ struct luciole::ProviderTransfer::State {
       }
     } else if (complete && action == TransferAction::Copy) {
       unchanged(node.captured.get(), info(node.source, token).get());
+    }
+    if (complete && node.created) {
+      finishCreated(node, token);
     }
     node.result.outcome = complete ? (action == TransferAction::Move ? TransferOutcome::Moved : TransferOutcome::Copied)
                                    : TransferOutcome::Partial;
@@ -773,11 +858,13 @@ struct luciole::ProviderTransfer::State {
       if (depth > 128) {
         throwFileError(FileErrorKind::Unsupported, "The transfer folder depth limit was reached.");
       }
-      auto source = info(node.source, token);
-      if (node.captured) {
-        unchanged(node.captured.get(), source.get(), !node.merged && action != TransferAction::Link);
-      } else {
-        node.captured = std::move(source);
+      if (!node.captured || !trustsListing(node.source)) {
+        auto source = info(node.source, token);
+        if (node.captured) {
+          unchanged(node.captured.get(), source.get(), !node.merged && action != TransferAction::Link);
+        } else {
+          node.captured = std::move(source);
+        }
       }
       auto parent = info(node.parent, token, false, node.parent.isAdmin());
       if (g_file_info_get_file_type(parent.get()) != G_FILE_TYPE_DIRECTORY
@@ -840,6 +927,14 @@ struct luciole::ProviderTransfer::State {
       }
       if (existing && !node.merged && !resolveConflict(node, *name, target, existing, parent.get(), token, choose)) {
         return;
+      }
+      if (!node.merged
+          && !existing
+          && action != TransferAction::Link
+          && node.parent.isNative()
+          && folder(node.captured.get())
+          && trustsListing(node.source)) {
+        createForItems(node, target, token);
       }
       if (node.merged) {
         executeMerge(node, token, bytes, choose, nativeCopies, writeback, retry && alreadyMerged, depth);
@@ -1056,9 +1151,12 @@ std::vector<luciole::TransferResult> luciole::ProviderTransfer::run(
       if (state.request.sources.size() > 4096) {
         throwFileError(FileErrorKind::Unsupported, "Too many transfer sources.");
       }
-      if (!transferLocationSupported(node->source) || !transferLocationSupported(node->parent)) {
+      if (!transferSupported(node->source, node->parent)) {
         throwFileError(
-            FileErrorKind::Unsupported, "This transfer requires local or mounted SFTP, SMB or WebDAV locations."
+            FileErrorKind::Unsupported,
+            transferDeviceSource(node->source)
+                ? "Files from phones and cameras can only be copied or moved into local folders."
+                : "This transfer requires local or mounted SFTP, SMB or WebDAV locations."
         );
       }
       if (state.request.action == TransferAction::Link && !transferLinkTarget(node->source, node->parent)) {

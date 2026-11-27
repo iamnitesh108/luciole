@@ -940,10 +940,122 @@ namespace {
       TEST_CHECK(!item.path().filename().native().starts_with(".luciole-transfer-"));
     }
   }
+  void put(const Location& location, const std::string& text) {
+    GError* error = nullptr;
+    TEST_CHECK(g_file_replace_contents(
+        gioFile(location).get(), text.data(), text.size(), nullptr, false, G_FILE_CREATE_NONE, nullptr, nullptr, &error
+    ));
+  }
+  bool present(const Location& location) {
+    const GioPtr<GFileInfo> found(g_file_query_info(
+        gioFile(location).get(), "standard::type", G_FILE_QUERY_INFO_NOFOLLOW_SYMLINKS, nullptr, nullptr
+    ));
+    return found != nullptr;
+  }
+  void removeTree(const Location& location) {
+    const GioPtr<GFileEnumerator> entries(g_file_enumerate_children(
+        gioFile(location).get(), "standard::name,standard::type", G_FILE_QUERY_INFO_NOFOLLOW_SYMLINKS, nullptr, nullptr
+    ));
+    while (entries) {
+      const GioPtr<GFileInfo> entry(g_file_enumerator_next_file(entries.get(), nullptr, nullptr));
+      if (!entry) {
+        break;
+      }
+      const auto child = location.child(g_file_info_get_name(entry.get()));
+      if (g_file_info_get_file_type(entry.get()) == G_FILE_TYPE_DIRECTORY) {
+        removeTree(child);
+      } else {
+        g_file_delete(gioFile(child).get(), nullptr, nullptr);
+      }
+    }
+    g_file_delete(gioFile(location).get(), nullptr, nullptr);
+  }
+  // Copies and moves from an MTP or PTP device folder into a local folder. `device` is a writable scratch folder
+  // on a connected device; fixtures are written there with GIO and removed afterwards.
+  void deviceTransfers(const Location& device, const fs::path& local) {
+    TEST_CHECK(transferDeviceSource(device));
+    const luciole::GString uuid(g_uuid_string_random());
+    const auto root = device.child(std::string("luciole-run-") + uuid.get());
+    TEST_CHECK(g_file_make_directory(gioFile(root).get(), nullptr, nullptr));
+    TEST_CHECK(g_file_make_directory(gioFile(root.child("DCIM")).get(), nullptr, nullptr));
+    TEST_CHECK(g_file_make_directory(gioFile(root.child("DCIM").child("Camera")).get(), nullptr, nullptr));
+    put(root.child("DCIM").child("IMG_0001.jpg"), "first photo");
+    put(root.child("DCIM").child("Camera").child("IMG_0002.jpg"), "second photo");
+    put(root.child("note café.txt"), "phone note");
+    put(root.child("large.bin"), std::string(32U << 20U, 'X'));
+    const auto destination = Location::fromPath(local.native());
+    {
+      TransferService copy;
+      TEST_CHECK(copy.start({{root.child("DCIM"), root.child("note café.txt")}, destination, Copy}));
+      wait(copy);
+      TEST_CHECK(std::ranges::all_of(copy.results(), [](const auto& result) { return result.outcome == Copied; }));
+      TEST_CHECK(read(local / "DCIM/IMG_0001.jpg") == "first photo");
+      TEST_CHECK(read(local / "DCIM/Camera/IMG_0002.jpg") == "second photo");
+      TEST_CHECK(read(local / "note café.txt") == "phone note");
+      TEST_CHECK(present(root.child("DCIM").child("IMG_0001.jpg")));
+
+      // Folders arrive file by file, yet Undo still removes the whole copied folder.
+      fs::create_directory(local / "undo");
+      TransferService recorded;
+      recorded.useOperationHistory();
+      TEST_CHECK(recorded.start({{root.child("DCIM")}, Location::fromPath((local / "undo").native()), Copy}));
+      wait(recorded);
+      TEST_CHECK(
+          recorded.results().front().outcome == Copied
+          && read(local / "undo/DCIM/Camera/IMG_0002.jpg") == "second photo"
+      );
+      TransferService undo;
+      TEST_CHECK(undo.replayCopy(recorded.takeCopyReceipt()));
+      wait(undo);
+      TEST_CHECK(!fs::exists(local / "undo/DCIM") && present(root.child("DCIM").child("IMG_0001.jpg")));
+
+      TransferService again;
+      TEST_CHECK(again.start({{root.child("note café.txt")}, destination, Copy}));
+      wait(again, [](const auto&) { return KeepBoth; });
+      TEST_CHECK(read(local / "note café (1).txt") == "phone note");
+      write(local / "note café.txt", "edited on the computer");
+      TransferService replace;
+      TEST_CHECK(replace.start({{root.child("note café.txt")}, destination, Copy}));
+      wait(replace, [](const auto&) { return Replace; });
+      TEST_CHECK(read(local / "note café.txt") == "phone note");
+
+      fs::create_directory(local / "moved");
+      TransferService move;
+      TEST_CHECK(
+          move.start({{root.child("DCIM").child("Camera")}, Location::fromPath((local / "moved").native()), Move})
+      );
+      wait(move);
+      TEST_CHECK(move.results().front().outcome == Moved);
+      TEST_CHECK(read(local / "moved/Camera/IMG_0002.jpg") == "second photo");
+      TEST_CHECK(!present(root.child("DCIM").child("Camera")) && present(root.child("DCIM").child("IMG_0001.jpg")));
+
+      TransferService cancelled;
+      TEST_CHECK(cancelled.start({{root.child("large.bin")}, destination, Copy}));
+      cancelled.cancel();
+      wait(cancelled);
+      TEST_CHECK(cancelled.results().front().outcome == Cancelled || cancelled.results().front().outcome == Copied);
+      TEST_CHECK(present(root.child("large.bin")));
+
+      TransferService upload;
+      TEST_CHECK(upload.start({{Location::fromPath((local / "moved").native())}, root, Copy}));
+      wait(upload);
+      TEST_CHECK(upload.results().front().outcome == Failed && !present(root.child("moved")));
+    }
+    // Replace keeps the overwritten file for Undo until its history is dropped with the job.
+    drainHistory();
+    for (const auto& item : fs::recursive_directory_iterator(local)) {
+      TEST_CHECK(!item.path().filename().native().starts_with(".luciole-"));
+    }
+    removeTree(root);
+  }
 } // namespace
 int main(int argc, char** argv) {
   GlibPollSource glib;
-  if (argc == 7 && std::string_view(argv[1]) == "--portable-provider") {
+  if (argc == 4 && std::string_view(argv[1]) == "--device") {
+    const auto device = Location::fromUri(argv[2]);
+    mount(device);
+    deviceTransfers(device, argv[3]);
+  } else if (argc == 7 && std::string_view(argv[1]) == "--portable-provider") {
     const auto remote = Location::fromUri(argv[2]), readOnly = Location::fromUri(argv[5]);
     TEST_CHECK(transferLocationSupported(remote) && transferLocationSupported(readOnly));
     mount(remote);
@@ -999,6 +1111,26 @@ int main(int argc, char** argv) {
     for (const auto* uri : {"smb://server/share", "dav://server/files", "davs://server/files"}) {
       TEST_CHECK(transferLocationSupported(Location::fromUri(uri)));
     }
+    const auto photo = Location::fromUri("mtp://SAMSUNG_Android_R58M/Internal%20storage/DCIM/photo.jpg");
+    const auto local = Location::fromPath(root.native());
+    for (const auto* uri :
+         {"mtp://SAMSUNG_Android_R58M/Internal%20storage/DCIM/photo.jpg", "gphoto2://Canon_EOS/store_00010001/DCIM"}) {
+      const auto item = Location::fromUri(uri);
+      // Devices are read-only sources: never a destination, and only towards local folders.
+      TEST_CHECK(transferDeviceSource(item) && !transferLocationSupported(item));
+      TEST_CHECK(transferSupported(item, local));
+      TEST_CHECK(!transferSupported(item, Location::fromUri("sftp://example.invalid/upload")));
+      TEST_CHECK(!transferSupported(local, item));
+    }
+    for (const auto* uri :
+         {"mtp://SAMSUNG_Android_R58M/", "mtp://user:secret@SAMSUNG_Android_R58M/DCIM", "mtp:///DCIM"}) {
+      TEST_CHECK(!transferDeviceSource(Location::fromUri(uri)));
+    }
+    TEST_CHECK(transferSupported(Location::fromUri("sftp://example.invalid/a"), local));
+    TransferService toServer;
+    TEST_CHECK(toServer.start({{photo}, Location::fromUri("sftp://example.invalid/upload"), TransferAction::Copy}));
+    wait(toServer);
+    TEST_CHECK(toServer.results().front().outcome == Failed && toServer.report().contains("phones and cameras"));
     const auto smb = Location::fromUri("smb://server/share/CaseFolder");
     TEST_CHECK(transferLocationsEqual(smb, Location::fromUri("smb://SERVER/SHARE/casefolder")));
     TEST_CHECK(transferLocationInside(Location::fromUri("smb://server/share/casefolder/child"), smb));

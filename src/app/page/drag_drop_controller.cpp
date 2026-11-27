@@ -395,7 +395,7 @@ bool DragDropController::validDropFolder(const luciole::Location& destination) c
   }
   bool anyDifferentParent = false;
   for (const auto& source : m_drag->entries) {
-    if (!luciole::transferLocationSupported(source.location)
+    if (!luciole::transferSupported(source.location, destination)
         || luciole::transferLocationsEqual(source.location, destination)) {
       return false;
     }

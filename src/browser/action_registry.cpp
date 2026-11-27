@@ -72,7 +72,7 @@ namespace {
     }
     if (!all(c, r, [&](const DirectoryEntry& entry) {
           const auto location = entry.location();
-          return transferLocationSupported(location)
+          return (transferLocationSupported(location) || transferDeviceSource(location))
               && ((entry.symlink && location.isNative()) || entry.access.read.value_or(true))
               && (entry.type == FileType::Directory || entry.type == FileType::Regular || entry.symlink)
               && (!cut || (entry.access.rename != false && entry.access.remove != false));

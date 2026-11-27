@@ -2,6 +2,8 @@
 #include "fs/transfer_types.h"
 
 #include <algorithm>
+#include <optional>
+#include <string>
 #include <string_view>
 
 namespace {
@@ -15,6 +17,19 @@ namespace {
     }
     const luciole::GString text(g_utf8_casefold(value, -1));
     return text.get();
+  }
+  // The scheme of a URI without credentials, query or fragment, which names a host unless it is file: or admin:.
+  std::optional<std::string> plainScheme(const luciole::Location& location) {
+    const auto uri = parsed(location, static_cast<GUriFlags>(G_URI_FLAGS_ENCODED | G_URI_FLAGS_HAS_PASSWORD));
+    if (!uri || g_uri_get_password(uri.get()) || g_uri_get_query(uri.get()) || g_uri_get_fragment(uri.get())) {
+      return std::nullopt;
+    }
+    std::string scheme(g_uri_get_scheme(uri.get()));
+    const char* host = g_uri_get_host(uri.get());
+    if (scheme != "file" && scheme != "admin" && (!host || !*host)) {
+      return std::nullopt;
+    }
+    return scheme;
   }
   int smbPort(GUri* uri) {
     const auto value = g_uri_get_port(uri);
@@ -38,25 +53,24 @@ namespace {
 } // namespace
 
 bool luciole::transferLocationSupported(const Location& location) {
-  const std::unique_ptr<GUri, decltype(&g_uri_unref)> uri(
-      g_uri_parse(
-          location.uri().c_str(), static_cast<GUriFlags>(G_URI_FLAGS_ENCODED | G_URI_FLAGS_HAS_PASSWORD), nullptr
-      ),
-      g_uri_unref
-  );
-  if (!uri || g_uri_get_password(uri.get()) || g_uri_get_query(uri.get()) || g_uri_get_fragment(uri.get())) {
-    return false;
-  }
-  const std::string_view scheme(g_uri_get_scheme(uri.get()));
+  const auto scheme = plainScheme(location);
   if (scheme == "file") {
     return location.isNative() && location.nativePath().has_value();
   }
   if (scheme == "admin") {
     return location.isAdmin();
   }
-  return (scheme == "sftp" || scheme == "smb" || scheme == "dav" || scheme == "davs")
-      && g_uri_get_host(uri.get())
-      && *g_uri_get_host(uri.get());
+  return scheme == "sftp" || scheme == "smb" || scheme == "dav" || scheme == "davs";
+}
+
+bool luciole::transferDeviceSource(const Location& location) {
+  const auto scheme = plainScheme(location);
+  return (scheme == "mtp" || scheme == "gphoto2") && !location.isDeviceRoot();
+}
+
+bool luciole::transferSupported(const Location& source, const Location& destination) {
+  return transferLocationSupported(destination)
+      && (transferLocationSupported(source) || (transferDeviceSource(source) && destination.isNative()));
 }
 
 std::optional<std::string> luciole::transferLinkTarget(const Location& source, const Location& destination) {
