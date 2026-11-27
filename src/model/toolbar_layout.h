@@ -34,10 +34,6 @@ namespace luciole {
       "sidebar",    "back",        "forward", "parent", "location",   "search",
       "new_folder", "empty_trash", "sort",    "view",   "operations", "menu"
   };
-  inline constexpr std::array<std::string_view, kToolbarItemCount> kToolbarItemLabels{
-      "Sidebar Button", "Back",        "Forward",     "Parent Folder", "Location",        "Search",
-      "New Folder",     "Empty Trash", "Sort Button", "View Switch",   "File Operations", "Main Menu"
-  };
 
   inline bool validToolbarOrder(ToolbarOrder order) {
     std::ranges::sort(order);
@@ -46,10 +42,6 @@ namespace luciole {
   inline std::string_view toolbarItemName(ToolbarItem item) {
     const auto index = static_cast<std::size_t>(item);
     return index < kToolbarItemNames.size() ? kToolbarItemNames[index] : std::string_view{};
-  }
-  inline std::string_view toolbarItemLabel(ToolbarItem item) {
-    const auto index = static_cast<std::size_t>(item);
-    return index < kToolbarItemLabels.size() ? kToolbarItemLabels[index] : std::string_view{};
   }
   inline std::optional<ToolbarItem> toolbarItemFromName(std::string_view name) {
     const auto* found = std::ranges::find(kToolbarItemNames, name);

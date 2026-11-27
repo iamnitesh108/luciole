@@ -793,12 +793,12 @@ void MenuController::openToolbarMenu(const LayoutRect& anchor, luciole::ToolbarI
   const auto moved = [&settings, item, shown](int direction) {
     return luciole::moveToolbarItem(settings.toolbarOrder, item, direction, shown);
   };
-  // The buttons Settings can hide, each with the preference that shows it.
-  const std::array<std::pair<ToolbarItem, luciole::PreferenceKey<bool>>, 4> toggles{
-      {{ToolbarItem::Sidebar, P::ShowSidebarButton},
-       {ToolbarItem::Parent, P::ShowParentButton},
-       {ToolbarItem::Sort, P::ShowSortButton},
-       {ToolbarItem::View, P::ShowViewSwitch}}
+  // The buttons Settings can hide, each with its Settings label and the preference that shows it.
+  const std::array<std::pair<std::string_view, luciole::PreferenceKey<bool>>, 4> toggles{
+      {{"Sidebar Button", P::ShowSidebarButton},
+       {"Parent Folder Button", P::ShowParentButton},
+       {"Sort Button", P::ShowSortButton},
+       {"View Switch", P::ShowViewSwitch}}
   };
   std::vector<ContextMenuControlEntry> entries{
       {.id = kMoveLeft, .label = "Move Left", .enabled = moved(left).has_value(), .glyph = "arrow-left"},
@@ -806,10 +806,10 @@ void MenuController::openToolbarMenu(const LayoutRect& anchor, luciole::ToolbarI
       {.label = "", .separator = true}
   };
   for (std::size_t index = 0; index < toggles.size(); ++index) {
-    const auto& [candidate, key] = toggles[index];
+    const auto& [label, key] = toggles[index];
     entries.push_back(
         {.id = kFirstToggle + static_cast<int>(index),
-         .label = std::string(luciole::toolbarItemLabel(candidate)),
+         .label = std::string(label),
          .checkmark = true,
          .toggleState = luciole::preferenceValue(settings, key) ? 1 : 0}
     );
