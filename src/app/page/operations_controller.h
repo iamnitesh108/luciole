@@ -11,9 +11,9 @@
 #include <utility>
 
 class Button;
-struct LayoutRect;
 class InputArea;
 class Label;
+struct LayoutRect;
 class OperationHub;
 class OperationsView;
 class PageContext;
@@ -38,7 +38,7 @@ private:
   void details(std::uint64_t id);
   void closed();
   float popupHeight(std::size_t count) const;
-  // The toolbar button, or the view options button while the toolbar button is hidden.
+  // The toolbar button, or the main menu button while the toolbar button is hidden.
   LayoutRect popupAnchor() const;
 
   PageContext& m_page;
