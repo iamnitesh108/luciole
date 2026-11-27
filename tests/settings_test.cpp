@@ -965,7 +965,7 @@ namespace {
     TEST_CHECK(
         loaded && loaded->browser.toolbarOrder == swapped && read(fixture.paths().overrides).contains("toolbar_order")
     );
-    for (const auto* value : {"[]", "[\"back\", \"back\"]", "[\"toolbar\"]", "\"back\"", "[1]"}) {
+    for (const auto* value : {"[]", R"(["back", "back"])", "[\"toolbar\"]", "\"back\"", "[1]"}) {
       fixture.write("config.toml", std::string("[browser]\ntoolbar_order = ") + value + "\n");
       TEST_CHECK(!luciole::validateConfigFile(fixture.paths().base).empty());
     }
