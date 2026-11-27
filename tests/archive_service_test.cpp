@@ -14,6 +14,7 @@
 #include <archive.h>
 #include <archive_entry.h>
 #include <array>
+#include <cerrno>
 #include <chrono>
 #include <clocale>
 #include <csignal>
@@ -22,6 +23,7 @@
 #include <format>
 #include <fstream>
 #include <gio/gio.h>
+#include <grp.h>
 #include <map>
 #include <print>
 #include <stdexcept>
@@ -121,6 +123,48 @@ namespace {
   }
   void wait(luciole::ArchiveService& service, Pump& pump) {
     pump.until([&] { return !service.busy(); });
+  }
+  void testSearchOnlyAncestors() {
+    // Run in a separate process so root CI can exercise actual read-permission denial.
+    if (::geteuid() == 0) {
+      TEST_CHECK(::setgroups(0, nullptr) == 0);
+      TEST_CHECK(::setgid(65534) == 0 && ::setuid(65534) == 0);
+    }
+    Fixture fixture;
+    Pump pump;
+    const auto users = fixture.root / "users", privateTmp = users / "private";
+    fs::create_directories(privateTmp);
+    TEST_CHECK(::chmod(privateTmp.c_str(), 0700) == 0);
+    const auto archive = fixture.root / "search-only.zip";
+    makeArchive(
+        archive, {{"folder/payload.txt", "private temporary storage", ""}, {"empty", "", "", AE_IFDIR, 0750}},
+        ARCHIVE_FORMAT_ZIP
+    );
+    const auto original = read(archive);
+    TEST_CHECK(::chmod(users.c_str(), 0111) == 0);
+    errno = 0;
+    const int unreadable = ::open(users.c_str(), O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+    TEST_CHECK(unreadable == -1 && errno == EACCES);
+    const auto ordinaryTmp = fixture.root / "tmp";
+    for (const bool privateStaging : {true, false}) {
+      const auto tmp = privateStaging ? privateTmp : ordinaryTmp;
+      const auto destination = privateStaging ? fixture.root / "from-private-tmp" : privateTmp / "destination";
+      TEST_CHECK(::setenv("TMPDIR", tmp.c_str(), 1) == 0);
+      luciole::ArchiveService service;
+      TEST_CHECK(service.extract(location(archive), location(destination)));
+      wait(service, pump);
+      TEST_CHECK(!service.error());
+      TEST_CHECK(read(destination / "folder/payload.txt") == "private temporary storage");
+      TEST_CHECK(fs::is_directory(destination / "empty"));
+      if (privateStaging) {
+        TEST_CHECK(fs::is_empty(privateTmp));
+      } else {
+        TEST_CHECK(fs::is_empty(ordinaryTmp));
+      }
+    }
+    TEST_CHECK(read(archive) == original);
+    TEST_CHECK(::setenv("TMPDIR", ordinaryTmp.c_str(), 1) == 0);
+    TEST_CHECK(::chmod(users.c_str(), 0700) == 0);
   }
   void testRoundTrips(const Fixture& fixture, Pump& pump) {
     const auto src = fixture.root / "source";
@@ -279,6 +323,58 @@ namespace {
     TEST_CHECK(limited.compress({location(longLink)}, location(output), luciole::ArchiveFormat::Zip));
     wait(limited, pump);
     TEST_CHECK(limited.error() && !fs::exists(output) && fs::is_empty(fixture.root / "tmp"));
+  }
+  void testCompressionPresets(const Fixture& fixture, Pump& pump) {
+    TEST_CHECK(!luciole::archiveCompressionLevelAvailable(luciole::ArchiveFormat::Tar));
+    TEST_CHECK(luciole::archiveCompressionLevelAvailable(luciole::ArchiveFormat::Zip));
+    TEST_CHECK(luciole::archiveCompressionLevelAvailable(luciole::ArchiveFormat::TarGzip));
+    TEST_CHECK(luciole::archiveCompressionLevelAvailable(luciole::ArchiveFormat::TarBzip2));
+    TEST_CHECK(luciole::archiveCompressionLevelAvailable(luciole::ArchiveFormat::TarZstd));
+    TEST_CHECK(luciole::archiveCompressionLevelAvailable(luciole::ArchiveFormat::TarXz));
+    TEST_CHECK(luciole::archiveCompressionLevelAvailable(luciole::ArchiveFormat::SevenZip));
+
+    const auto srcDir = fixture.root / "compression_src";
+    fs::create_directories(srcDir);
+    std::string repeated;
+    repeated.reserve(40000);
+    for (int i = 0; i < 1000; ++i) {
+      repeated += "Luciole compression preset test data line " + std::to_string(i) + "\n";
+    }
+    write(srcDir / "payload.txt", repeated);
+
+    for (const auto& format : luciole::archiveFormats()) {
+      if (!luciole::archiveCompressionLevelAvailable(format.format)) {
+        continue;
+      }
+      std::uintmax_t fastSize = 0, maxSize = 0;
+      for (const auto level :
+           {luciole::ArchiveCompressionLevel::Fast, luciole::ArchiveCompressionLevel::Balanced,
+            luciole::ArchiveCompressionLevel::Maximum}) {
+        const auto archive =
+            fixture.root / ("preset-" + std::to_string(static_cast<int>(level)) + std::string(format.suffix));
+        luciole::ArchiveService service;
+        TEST_CHECK(service.compress({location(srcDir)}, location(archive), format.format, level));
+        wait(service, pump);
+        TEST_CHECK(!service.error() && fs::exists(archive));
+
+        const auto size = fs::file_size(archive);
+        if (level == luciole::ArchiveCompressionLevel::Fast) {
+          fastSize = size;
+        } else if (level == luciole::ArchiveCompressionLevel::Maximum) {
+          maxSize = size;
+        }
+
+        const auto dest = fixture.root
+            / ("extract-preset-"
+               + std::to_string(static_cast<int>(level))
+               + "-"
+               + std::to_string(static_cast<int>(format.format)));
+        TEST_CHECK(service.extract(location(archive), location(dest)));
+        wait(service, pump);
+        TEST_CHECK(!service.error() && read(dest / "compression_src/payload.txt") == repeated);
+      }
+      TEST_CHECK(maxSize <= fastSize);
+    }
   }
   void testConflicts(const Fixture& fixture, Pump& pump) {
     const auto source = fixture.root / "conflict.txt", archive = fixture.root / "conflict.zip";
@@ -473,7 +569,7 @@ namespace {
     luciole::archive_work::Progress createdProgress;
     auto created = luciole::archive_work::compress(
         {location(root / "many"), location(root / "d")}, location(fixture.root / "large-created.zip"),
-        luciole::ArchiveFormat::Zip, {}, cancel, createdProgress
+        luciole::ArchiveFormat::Zip, luciole::ArchiveCompressionLevel::Balanced, {}, cancel, createdProgress
     );
     const auto recreated = luciole::archive_work::inspect(*created.output, {}, cancel, createdProgress);
     TEST_CHECK(recreated.catalog->entries.size() > 50000);
@@ -612,12 +708,17 @@ namespace {
     const auto output = fixture.root / "created-encrypted.zip";
     write(source, "encrypted payload");
     luciole::ArchiveService service;
-    TEST_CHECK(!service.compress({location(source)}, location(output), luciole::ArchiveFormat::Tar, "test password"));
+    constexpr auto balanced = luciole::ArchiveCompressionLevel::Balanced;
     TEST_CHECK(
-        !service.compress({location(source)}, location(output), luciole::ArchiveFormat::Zip, std::string(1025, 'x'))
+        !service.compress({location(source)}, location(output), luciole::ArchiveFormat::Tar, balanced, "test password")
     );
+    TEST_CHECK(!service.compress(
+        {location(source)}, location(output), luciole::ArchiveFormat::Zip, balanced, std::string(1025, 'x')
+    ));
     TEST_CHECK(!fs::exists(output));
-    TEST_CHECK(service.compress({location(source)}, location(output), luciole::ArchiveFormat::Zip, "test password"));
+    TEST_CHECK(
+        service.compress({location(source)}, location(output), luciole::ArchiveFormat::Zip, balanced, "test password")
+    );
     wait(service, pump);
     TEST_CHECK(!service.error() && read(source) == "encrypted payload");
     // Read independently through the system provider; the writer must not emit plaintext ZIP data.
@@ -961,7 +1062,9 @@ namespace {
       }
       TEST_CHECK(format->compression == item.compression && format->suffix == item.suffix);
       luciole::ArchiveService service;
-      TEST_CHECK(!service.compress({location(source)}, location(path), item.format, "not supported"));
+      TEST_CHECK(!service.compress(
+          {location(source)}, location(path), item.format, luciole::ArchiveCompressionLevel::Balanced, "not supported"
+      ));
       TEST_CHECK(service.compress({location(source)}, location(path), item.format));
       wait(service, pump);
       TEST_CHECK(!service.error());
@@ -1895,7 +1998,8 @@ esac
     );
     luciole::ArchiveService passwordService;
     TEST_CHECK(!passwordService.compress(
-        {location(fixture.root / "unused")}, location(fixture.root / "password.7z"), format->format, "unsupported"
+        {location(fixture.root / "unused")}, location(fixture.root / "password.7z"), format->format,
+        luciole::ArchiveCompressionLevel::Balanced, "unsupported"
     ));
     const std::vector<std::vector<Entry>> rejected{
         {{"../sevenzip-escaped", "bad", {}}},
@@ -1965,7 +2069,10 @@ esac
       const auto archive = fixture.root / "xz-writer.tar.xz";
       write(source, "independent reader");
       luciole::ArchiveService service;
-      TEST_CHECK(!service.compress({location(source)}, location(archive), format->format, "unsupported"));
+      TEST_CHECK(!service.compress(
+          {location(source)}, location(archive), format->format, luciole::ArchiveCompressionLevel::Balanced,
+          "unsupported"
+      ));
       TEST_CHECK(service.compress({location(source)}, location(archive), format->format));
       wait(service, pump);
       TEST_CHECK(!service.error());
@@ -2219,7 +2326,8 @@ esac
       bool failed = false;
       try {
         auto prepared = luciole::archive_work::compress(
-            {location(source)}, location(fixture.root / "failed-output"), format.format, {}, cancel, progress, passwords
+            {location(source)}, location(fixture.root / "failed-output"), format.format,
+            luciole::ArchiveCompressionLevel::Balanced, {}, cancel, progress, passwords
         );
         (void)luciole::archive_work::cleanup({prepared.stage});
       } catch (const std::exception&) {
@@ -2248,6 +2356,10 @@ esac
 } // namespace
 int main(int argc, char** argv) {
   try {
+    if (argc == 2 && std::string_view(argv[1]) == "--search-only-ancestors") {
+      testSearchOnlyAncestors();
+      return 0;
+    }
     if (argc == 3 && std::string_view(argv[1]) == "--large-sparse-fixture") {
       return makeLargeSparseFixture(argv[2]);
     }
@@ -2299,6 +2411,7 @@ int main(int argc, char** argv) {
     testNativeJobCapacity(fixture);
     testLargeSparseMember(fixture);
     testLargeCatalogue(fixture);
+    testCompressionPresets(fixture, pump);
     testConflicts(fixture, pump);
     testHostile(fixture, pump);
     testLimitsAndTruncation(fixture, pump);
@@ -2340,6 +2453,10 @@ int main(int argc, char** argv) {
         G_SUBPROCESS_FLAGS_NONE, nullptr, "/proc/self/exe", "--bounded-encrypted-write-failure", nullptr
     ));
     TEST_CHECK(writeFailure && g_subprocess_wait_check(writeFailure.get(), nullptr, nullptr));
+    const luciole::GioPtr<GSubprocess> searchOnly(
+        g_subprocess_new(G_SUBPROCESS_FLAGS_NONE, nullptr, "/proc/self/exe", "--search-only-ancestors", nullptr)
+    );
+    TEST_CHECK(searchOnly && g_subprocess_wait_check(searchOnly.get(), nullptr, nullptr));
     TEST_CHECK(fs::is_empty(fixture.root / "tmp"));
     std::println("archive checks passed");
     return 0;

@@ -29,6 +29,7 @@ namespace luciole {
     // Counts committed copy/link leaves, excluding merges/skips, only when the whole selection completed.
     std::optional<std::size_t> completedCopies() const;
     std::size_t retryable() const;
+    bool hasRetryableSource(std::size_t index) const;
 
   private:
     struct State;

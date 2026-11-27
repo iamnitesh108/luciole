@@ -4,7 +4,7 @@ Create, browse and extract archives without leaving Luciole.
 
 ## Create an archive
 
-Select native files or folders and choose **Compress**. Luciole creates ZIP, TAR and 7z archives. Compressed TAR variants (gzip, bzip2, XZ, Zstandard) depend on the installed archive library.
+Select native files or folders and choose **Compress**. Luciole creates ZIP, TAR and 7z archives. Compressed TAR variants (gzip, bzip2, XZ, Zstandard) depend on the installed archive library. When creating compressed archives, you can choose between Fast, Balanced and Maximum compression presets; uncompressed TAR skips this choice.
 
 Symbolic links are stored as links with their original target text, not their contents. Absolute, outside-folder, missing and cyclic targets can be archived this way.
 
@@ -28,6 +28,8 @@ Use **Extract Here** or **Extract To**, or the **Extract…** and **Extract Here
 You can also drop one archive on a folder and choose **Extract Here** from the menu.
 
 Before extracting, Luciole checks that temporary storage and the destination have enough space. This is an estimate, so write errors are still reported. Archives that are unsafe or unsupported are refused with a message.
+
+Temporary storage follows `TMPDIR`, including private per-user folders configured through pam_tmpdir. Ancestors above the temporary and destination folders can allow search access while hiding directory listings.
 
 ## Supported inputs
 

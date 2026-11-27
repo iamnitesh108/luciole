@@ -12,6 +12,9 @@
 #include <vector>
 
 namespace luciole {
+  namespace transfer {
+    struct WritebackOps;
+  }
   class MoveReceipt;
   class CopyReceipt;
   enum class TransferConflictChoice { Replace, Skip, KeepBoth, Cancel, Merge };
@@ -41,6 +44,8 @@ namespace luciole {
   class TransferService {
   public:
     TransferService();
+    explicit TransferService(transfer::WritebackOps ops);
+    TransferFlush flushPhase() const;
     ~TransferService();
     TransferService(const TransferService&) = delete;
     TransferService& operator=(const TransferService&) = delete;
@@ -50,6 +55,8 @@ namespace luciole {
     bool replay(const std::shared_ptr<const MoveReceipt>& receipt);
     bool replayCopy(const std::shared_ptr<const CopyReceipt>& receipt);
     void cancel();
+    // Cancels worker work unconditionally during service or application teardown, including post-flush history capture.
+    void shutdown();
     bool busy() const;
     std::size_t total() const;
     std::size_t completed() const;

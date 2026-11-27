@@ -21,6 +21,9 @@ namespace {
     return value < 0 ? 445 : value;
   }
   std::optional<std::string> smbPath(const luciole::Location& source, const luciole::Location& target) {
+    if (!source.uri().starts_with("smb:") || !target.uri().starts_with("smb:")) {
+      return {};
+    }
     const auto a = parsed(source), b = parsed(target);
     if (!a
         || !b

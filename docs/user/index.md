@@ -1,42 +1,26 @@
 # Luciole
 
-Luciole is a native Wayland file manager with grid, list and column views, tabs, split view and a side preview. It runs independently of the Noctalia shell. The application is in development; these guides describe current features.
+Luciole is a file manager for Wayland. Folders with thousands of files scroll without stuttering, and thumbnails fill in while you keep working. It is written with its own toolkit instead of Qt or GTK, and it does not need the Noctalia shell to run.
 
 ![Luciole showing a folder of images in grid view with the side preview open](assets/index-hero.webp)
 
-## Guides
+## What it does
 
-| Page | Purpose |
-|---|---|
-| **Getting started** | |
-| [Installation](installation.md) | Install from a package, Nix or Guix |
-| [Building from source](building.md) | Dependencies and build commands |
-| [Getting started](getting-started.md) | Start Luciole, tour the window, learn shortcuts |
-| [File picker](file-picker.md) | Use Luciole for other applications' Open and Save dialogs |
-| **Basics** | |
-| [Navigation](navigation.md) | Location bar, search, history and keyboard navigation |
-| [Views](views.md) | Grid, list and column views, sorting and selection |
-| [Tabs and split view](tabs-and-windows.md) | Tabs, two panes and windows |
-| [Sidebar and drives](sidebar.md) | Places, pinned folders, drives and unlocking |
-| [Preview and Properties](preview-and-properties.md) | Preview files, inspect details and permissions |
-| **Files** | |
-| [File operations](file-operations.md) | Copy, move, rename, drag and drop, conflicts |
-| [Undo and redo](undo-redo.md) | Reverse the last file operation |
-| [Trash](trash.md) | Delete, restore and empty the Trash |
-| [File operations](file-operations.md) | Copy, move, create, rename and background operations |
-| [Undo and redo](undo-redo.md) | What you can take back |
-| [Trash](trash.md) | Delete, restore and empty |
-| [Archives](archives.md) | Browse, extract and create archives |
-| [Opening files](opening-files.md) | Default apps, Open With, running programs, terminals |
-| [Custom scripts](scripts.md) | Add your own actions |
-| **Network** | |
-| [Network folders](network.md) | SFTP, SMB and WebDAV locations |
-| **Customize** | |
-| [Settings](settings.md) | Tour the Settings page |
-| [Configuration reference](configuration.md) | Every `config.toml` key |
-| [Keyboard shortcuts](keybinds.md) | Default shortcuts and customization |
-| **Help** | |
-| [Troubleshooting](troubleshooting.md) | Symptoms, causes and fixes |
+- Shows folders as a grid, a list or columns, with tabs and a split view for two folders side by side.
+- Previews images, video, text and PDFs in a side panel, so you can check a file without opening it.
+- Copies, moves, renames and deletes, with undo and redo and a Trash you can restore from.
+- Browses archives like folders and can extract or create them.
+- Opens SFTP, SMB and WebDAV locations next to your local folders.
+- Can answer the Open and Save dialogs of other applications.
+- Takes its colors from the Noctalia palette when one is installed.
+
+## Where to start
+
+1. [Install Luciole](installation.md) from a package, Nix or Guix, or [build it from source](building.md).
+2. Take the [window tour](getting-started.md) and learn the shortcuts you will use most.
+3. Pick a [view](views.md), set up your [sidebar](sidebar.md) and open [Settings](settings.md).
+
+Luciole is still in development; these guides describe what works today.
 
 ## Get help
 

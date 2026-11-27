@@ -10,7 +10,6 @@
 #include <format>
 #include <glib.h>
 #include <optional>
-#include <set>
 #include <unistd.h>
 #include <utility>
 
@@ -137,12 +136,13 @@ namespace luciole::transfer {
     }
 
     void queueSourceRemoval(
-        Node& node, const Tree& tree, int destination, std::shared_ptr<const CopiedMoveEffect> proof, Work& work
+        Node& node, const Tree& tree, Writeback::Volume& destination, std::shared_ptr<const CopiedMoveEffect> proof,
+        Work& work
     ) {
       work.pendingMoves.push_back(
           {.node = &node,
            .tree = tree,
-           .destination = opened(::fcntl(destination, F_DUPFD_CLOEXEC, 0)),
+           .destination = &destination,
            .outcome = TransferOutcome::Moved,
            .proof = std::move(proof)}
       );
@@ -187,6 +187,80 @@ namespace luciole::transfer {
       return {sameFolder, false};
     }
 
+    enum class NativeMove { Retry, Fallback, Done };
+    NativeMove tryNativeMove(
+        Node& node, int destination, const std::string& target, const std::optional<struct stat>& replace,
+        Writeback::Volume& volume, Work& work, TransferResult& result
+    ) {
+      using enum TransferOutcome;
+      auto& source = node.source;
+      const auto& binding = *node.destination;
+      if (replace && work.prepareMove) {
+        auto proof = work.prepareMove(source, binding.location.child(target), destination);
+        if (proof) {
+          auto operation = prepareRenameHistory(work, source, binding.location.child(target));
+          work.check();
+          requireUnchanged(source.metadata, info(source.parent.get(), source.name));
+          requireUnchanged(*replace, info(destination, target));
+          if (renameExchange(source.parent.get(), source.name.c_str(), destination, target.c_str()) != 0) {
+            if (errno != EXDEV) {
+              fail("Could not exchange moved item");
+            }
+            if (work.discardPreparedMove) {
+              work.discardPreparedMove(proof);
+            }
+            return NativeMove::Fallback; // No exchange occurred; use the verified copy/remove path instead.
+          }
+          result.outcome = Partial;
+          result.destination = binding.location.child(target);
+          work.writeback.published(volume, node.result);
+          try {
+            work.note(info(destination, target));
+            work.note(info(source.parent.get(), source.name));
+            work.recordPreparedMove(proof);
+            if (work.operationHistory) {
+              work.operationHistory->published(operation, true);
+            }
+            result.outcome = Moved;
+          } catch (const std::exception&) {
+            result.error = currentFileError();
+            result.error->message += " Inspect both the destination and original source name for the exchanged items.";
+          }
+          return NativeMove::Done;
+        }
+      }
+      if (replace) {
+        return NativeMove::Fallback;
+      }
+      work.check();
+      requireUnchanged(source.metadata, info(source.parent.get(), source.name));
+      Fd historyItem;
+      if (work.recordMove) {
+        historyItem = Fd(::openat(source.parent.get(), source.name.c_str(), O_PATH | O_NOFOLLOW | O_CLOEXEC));
+      }
+      auto operation = prepareRenameHistory(work, source, binding.location.child(target));
+      if (renameNoReplace(source.parent.get(), source.name.c_str(), destination, target.c_str()) == 0) {
+        work.writeback.published(volume, node.result);
+        result.outcome = Moved;
+        result.destination = binding.location.child(target);
+        work.note(info(destination, target));
+        if (work.recordMove && !work.recordMove(source, *result.destination, destination, historyItem.get())) {
+          work.recordMove = {};
+        }
+        if (work.operationHistory) {
+          work.operationHistory->published(operation);
+        }
+        return NativeMove::Done;
+      }
+      if (errno == EXDEV) {
+        return NativeMove::Fallback;
+      }
+      if (errno != EEXIST) {
+        fail("Could not move item");
+      }
+      return NativeMove::Retry;
+    }
+
     TransferResult transferItem(Node& node, int destination, TransferAction action, Work& work) {
       auto& source = node.source;
       const auto& binding = *node.destination;
@@ -199,6 +273,7 @@ namespace luciole::transfer {
           return result;
         }
         const bool sameFolder = prepared.sameFolder;
+        Writeback::Volume* volume = nullptr;
         std::string target = work.exactTarget && node.depth == 0 ? *work.exactTarget->basename() : source.name;
         bool keepBoth = sameFolder && !work.exactTarget, merging = false, forcePrompt = false;
         std::uint64_t number = 0;
@@ -219,77 +294,29 @@ namespace luciole::transfer {
             }
             return merge(node, destination, action, work, *replace);
           }
+          volume = &work.writeback.observe(destination, binding.metadata.st_dev);
           validateBindings(source, binding);
           if (work.operationHistory) {
             work.operationHistory->beforeTransfer(source.location, binding.location.child(target));
           }
-          if (action == TransferAction::Move && replace && work.prepareMove) {
-            auto proof = work.prepareMove(source, binding.location.child(target), destination);
-            if (proof) {
-              auto operation = prepareRenameHistory(work, source, binding.location.child(target));
-              work.check();
-              requireUnchanged(source.metadata, info(source.parent.get(), source.name));
-              requireUnchanged(*replace, info(destination, target));
-              if (renameExchange(source.parent.get(), source.name.c_str(), destination, target.c_str()) != 0) {
-                if (errno != EXDEV) {
-                  fail("Could not exchange moved item");
-                }
-                if (work.discardPreparedMove) {
-                  work.discardPreparedMove(proof);
-                }
-                break; // No exchange occurred; use the verified copy/remove path instead.
-              }
-              result.outcome = Partial;
-              result.destination = binding.location.child(target);
-              try {
-                work.note(info(destination, target));
-                work.note(info(source.parent.get(), source.name));
-                work.recordPreparedMove(proof);
-                if (work.operationHistory) {
-                  work.operationHistory->published(operation, true);
-                }
-                result.outcome = Moved;
-              } catch (const std::exception&) {
-                result.error = currentFileError();
-                result.error->message +=
-                    " Inspect both the destination and original source name for the exchanged items.";
-              }
-              return result;
-            }
-          }
-          if (action != TransferAction::Move || replace) {
+          if (action != TransferAction::Move) {
             break;
           }
-          work.check();
-          requireUnchanged(source.metadata, info(source.parent.get(), source.name));
-          Fd historyItem;
-          if (work.recordMove) {
-            historyItem = Fd(::openat(source.parent.get(), source.name.c_str(), O_PATH | O_NOFOLLOW | O_CLOEXEC));
-          }
-          auto operation = prepareRenameHistory(work, source, binding.location.child(target));
-          if (renameNoReplace(source.parent.get(), source.name.c_str(), destination, target.c_str()) == 0) {
-            work.note(info(destination, target));
-            result.outcome = Moved;
-            result.destination = binding.location.child(target);
-            if (work.recordMove && !work.recordMove(source, *result.destination, destination, historyItem.get())) {
-              work.recordMove = {};
-            }
-            if (work.operationHistory) {
-              work.operationHistory->published(operation);
-            }
+          const auto moved = tryNativeMove(node, destination, target, replace, *volume, work, result);
+          if (moved == NativeMove::Done) {
             return result;
           }
-          if (errno == EXDEV) {
+          if (moved == NativeMove::Fallback) {
             break;
-          }
-          if (errno != EEXIST) {
-            fail("Could not move item");
           }
         }
         if (action != TransferAction::Move && work.checkpointCopy) {
           work.checkpointCopy(binding.location.child(target), replace.has_value());
         }
-        Stage stage(destination, work);
+        if (replace || action == TransferAction::Move) {
+          work.writeback.pin(*volume, destination);
+        }
+        Stage stage(destination, work, *binding.location.nativePath());
         work.metadataIncomplete = false;
         bool published = false;
         bool deferred = false;
@@ -300,6 +327,7 @@ namespace luciole::transfer {
               fail("Could not create symbolic link");
             }
           } else {
+            const PacingScope pacing(work, stage, *volume);
             tree = copyTree(source.parent.get(), source.name, stage.fd(), "item", work, 0);
             requireUnchanged(source.metadata, tree->metadata);
           }
@@ -340,9 +368,8 @@ namespace luciole::transfer {
             validateBindings(source, binding);
             verifySource();
             if (replace) {
-              // The exchange retires the old destination: make the copy durable first. Plain copies skip this,
-              // like cp and GIO.
-              synchronize(stage.fd());
+              work.writeback.pin(*volume, destination);
+              work.writeback.flush(*volume);
             }
             auto copyProof = action != TransferAction::Move && work.prepareCopy
                 ? work.prepareCopy(
@@ -378,6 +405,10 @@ namespace luciole::transfer {
             }
             published = true;
             result.destination = binding.location.child(target);
+            work.writeback.published(*volume, node.result, action == TransferAction::Move);
+            if (replace && volume->removable) {
+              stage.flushReplacement(work.writeback, *volume);
+            }
             if (replace && !sameRenamedRevision(*replace, info(stage.fd(), "item"), true)) {
               stage.retain();
               throwFileError(
@@ -391,7 +422,7 @@ namespace luciole::transfer {
             }
             if (action == TransferAction::Move) {
               // The sources go only after the published copy is durable; flushMoves() syncs a batch at once.
-              queueSourceRemoval(node, *tree, destination, std::move(moveProof), work);
+              queueSourceRemoval(node, *tree, *volume, std::move(moveProof), work);
               deferred = true;
               result.outcome = Moved;
             }
@@ -419,6 +450,9 @@ namespace luciole::transfer {
               " Previous or temporary items remain in " + stage.name() + " in the destination."
           );
         }
+        if (published && replace) {
+          work.writeback.markDirty(*volume, node.result);
+        }
         if (work.metadataIncomplete && published) {
           appendError(
               result.error, FileErrorKind::Unsupported, " The destination does not support some extended attributes."
@@ -433,11 +467,30 @@ namespace luciole::transfer {
         result.outcome = Cancelled;
         result.error = FileError{.kind = FileErrorKind::Cancelled, .message = "Transfer cancelled."};
       } catch (const std::exception&) {
+        if (result.destination) {
+          result.outcome = Partial;
+        }
         result.error = currentFileError();
       }
       result.retryable = result.outcome == Failed;
       return result;
     }
+
+    struct MergeCounts {
+      std::size_t done = 0, failed = 0, skipped = 0, cancelled = 0;
+      void add(TransferOutcome value) {
+        using enum TransferOutcome;
+        done += value == Moved || value == Copied || value == Partial ? 1 : 0;
+        failed += value == Failed || value == Partial ? 1 : 0;
+        skipped += value == Skipped ? 1 : 0;
+        cancelled += value == Cancelled ? 1 : 0;
+      }
+      std::string summary() const {
+        return std::format(
+            "Merge: {} completed, {} failed/partial, {} skipped, {} cancelled.", done, failed, skipped, cancelled
+        );
+      }
+    };
 
     TransferResult merge(Node& node, int destination, TransferAction action, Work& work, const struct stat& existing) {
       // Native move history captures changed leaves and retains emptied source containers.
@@ -521,6 +574,9 @@ namespace luciole::transfer {
         }
         finishedChildren = true;
         flushMoves(work);
+        if (action == TransferAction::Move) {
+          work.writeback.flushPublished(existing.st_dev);
+        }
         const bool complete = std::ranges::all_of(node.children, [action](const auto& child) {
           return child->result.outcome == (action == TransferAction::Copy ? Copied : Moved);
         });
@@ -544,6 +600,7 @@ namespace luciole::transfer {
             if (work.operationHistory) {
               work.operationHistory->removedMerge(source.location);
             }
+            work.writeback.markDirty(source.metadata.st_dev, node.result);
             result.outcome = Moved;
           } else {
             requireUnchanged(source.metadata, statFd(input.get()));
@@ -563,25 +620,19 @@ namespace luciole::transfer {
             && action == TransferAction::Move
             && std::ranges::all_of(node.children, [](const auto& child) { return child->result.outcome == Moved; });
       }
-      std::size_t done = 0, failed = 0, skipped = 0, cancelled = 0;
+      MergeCounts counts;
       for (const auto& child : node.children) {
-        const auto value = child->result.outcome;
-        done += value == Moved || value == Copied || value == Partial ? 1 : 0;
-        failed += value == Failed || value == Partial ? 1 : 0;
-        skipped += value == Skipped ? 1 : 0;
-        cancelled += value == Cancelled ? 1 : 0;
+        counts.add(child->result.outcome);
       }
-      result.outcome = done > 0                    ? Partial
-          : failed > 0 || result.error.has_value() ? (work.token.cancelled() ? Cancelled : Failed)
-          : cancelled > 0                          ? Cancelled
-                                                   : Skipped;
+      result.outcome = counts.done > 0                    ? Partial
+          : counts.failed > 0 || result.error.has_value() ? (work.token.cancelled() ? Cancelled : Failed)
+          : counts.cancelled > 0                          ? Cancelled
+                                                          : Skipped;
       result.retryable = result.retryable || (!node.merging && result.outcome == Failed);
       if (!result.error) {
         result.error = FileError{
             .kind = FileErrorKind::Other,
-            .message = std::format(
-                "Merge: {} completed, {} failed/partial, {} skipped, {} cancelled.", done, failed, skipped, cancelled
-            ),
+            .message = counts.summary(),
         };
         const auto problem =
             std::ranges::find_if(node.children, [](const auto& child) { return child->result.error.has_value(); });
@@ -595,7 +646,8 @@ namespace luciole::transfer {
     }
   } // namespace
 
-  Stage::Stage(int parent, CopyWork& work) : m_parent(parent), m_work(work) {
+  Stage::Stage(int parent, CopyWork& work, std::string parentPath)
+      : m_parent(parent), m_work(work), m_parentPath(std::move(parentPath)) {
     const GString id(g_uuid_string_random());
     m_name = ".luciole-transfer-" + std::string(id.get());
     if (::mkdirat(parent, m_name.c_str(), 0700) != 0) {
@@ -615,6 +667,39 @@ namespace luciole::transfer {
     }
   }
 
+  void Stage::prepareAsyncCleanup() {
+    if (m_ownedParent.valid()) {
+      return;
+    }
+    m_ownedParent = checkedFd(::fcntl(m_parent, F_DUPFD_CLOEXEC, 0));
+    m_identity = statFd(m_fd.get());
+    if (!m_parentPath.empty()) {
+      m_path = m_parentPath == "/" ? "/" + m_name : m_parentPath + "/" + m_name;
+    } else {
+      m_path = m_name;
+    }
+  }
+
+  DetachedStage Stage::detachForCleanup() noexcept {
+    m_cleaned = true;
+    return DetachedStage{
+        .parent = std::move(m_ownedParent),
+        .directory = std::move(m_fd),
+        .name = std::move(m_name),
+        .identity = m_identity,
+        .path = std::move(m_path),
+    };
+  }
+
+  void Stage::flushReplacement(Writeback& writeback, Writeback::Volume& volume) {
+    try {
+      writeback.flush(volume);
+    } catch (...) {
+      keepContents();
+      throw;
+    }
+  }
+
   bool Stage::clear() noexcept {
     if (m_cleaned) {
       return true;
@@ -628,9 +713,26 @@ namespace luciole::transfer {
       for (const auto& name : names) {
         removeTemporary(m_fd.get(), name, m_work);
       }
+      m_fd = Fd{};
       return ::unlinkat(m_parent, m_name.c_str(), AT_REMOVEDIR) == 0;
     } catch (...) {
       return false;
+    }
+  }
+
+  PacingScope::PacingScope(Work& work, Stage& stage, Writeback::Volume& volume)
+      : m_work(work), m_stage(stage), m_previousPaceLimit(std::exchange(work.paceLimit, volume.paceLimit)),
+        m_previousRangeSyncUnsupported(std::exchange(work.rangeSyncUnsupported, &volume.rangeSyncUnsupported)),
+        m_previousOps(std::exchange(work.writebackOps, &work.writeback.ops)),
+        m_previousPrepare(std::exchange(work.prepareAsyncStage, [&stage] { stage.prepareAsyncCleanup(); })) {}
+
+  PacingScope::~PacingScope() {
+    m_work.paceLimit = m_previousPaceLimit;
+    m_work.rangeSyncUnsupported = m_previousRangeSyncUnsupported;
+    m_work.writebackOps = m_previousOps;
+    m_work.prepareAsyncStage = std::move(m_previousPrepare);
+    if (auto pending = std::exchange(m_work.abandonedCleanup, {})) {
+      pending->attachStage(m_stage.detachForCleanup());
     }
   }
 
@@ -650,11 +752,47 @@ namespace luciole::transfer {
     return count;
   }
 
-  TransferResult snapshot(const Node& node) {
+  TransferResult snapshot(Node& node) {
     auto result = node.result;
     result.children.clear();
+    result.children.reserve(node.children.size());
+    std::optional<std::size_t> partialIndex;
     for (const auto& child : node.children) {
-      result.children.push_back(snapshot(*child));
+      const auto& committed = result.children.emplace_back(snapshot(*child));
+      if (committed.outcome == TransferOutcome::Partial && !partialIndex) {
+        partialIndex = result.children.size() - 1;
+      }
+    }
+    if (partialIndex) {
+      const auto& partialChild = result.children[*partialIndex];
+      if (result.outcome == TransferOutcome::Copied || result.outcome == TransferOutcome::Moved) {
+        node.result.outcome = result.outcome = TransferOutcome::Partial;
+        node.result.error = result.error = partialChild.error;
+        node.result.retryable = result.retryable = false;
+      } else if (result.outcome == TransferOutcome::Partial) {
+        node.result.retryable = result.retryable = false;
+        if (partialChild.error) {
+          if (!node.result.error) {
+            node.result.error = partialChild.error;
+          } else if (node.result.error->message.starts_with("Merge: ")) {
+            MergeCounts counts;
+            for (const auto& committed : result.children) {
+              counts.add(committed.outcome);
+            }
+            node.result.error = FileError{
+                .kind = partialChild.error->kind,
+                .message =
+                    std::format("{} {}: {}", counts.summary(), partialChild.source.uri(), partialChild.error->message),
+            };
+          } else if (!node.result.error->message.contains(partialChild.error->message)) {
+            if (node.result.error->kind == FileErrorKind::Cancelled) {
+              node.result.error->kind = partialChild.error->kind;
+            }
+            node.result.error->message += " " + partialChild.source.uri() + ": " + partialChild.error->message;
+          }
+          result.error = node.result.error;
+        }
+      }
     }
     return result;
   }
@@ -719,26 +857,23 @@ namespace luciole::transfer {
   void flushMoves(Work& work) {
     using enum TransferOutcome;
     auto pending = std::exchange(work.pendingMoves, {});
-    std::optional<FileError> syncError;
-    std::set<dev_t> synced;
     for (const auto& move : pending) {
-      try {
-        if (synced.insert(statFd(move.destination.get()).st_dev).second) {
-          synchronize(move.destination.get());
+      auto& volume = *move.destination;
+      if (!volume.published.empty()) {
+        try {
+          work.writeback.flush(volume);
+        } catch (const FileErrorException&) {
+          // Only sources awaiting this filesystem must be kept.
         }
-      } catch (const std::exception&) {
-        syncError = currentFileError();
-        break;
       }
     }
     for (auto& move : pending) {
       auto& result = move.node->result;
       result.outcome = Partial;
-      if (syncError) {
-        appendError(
-            result.error, syncError->kind,
-            "The destination was created, but transfer cleanup is incomplete: " + syncError->message
-        );
+      if (const auto& error = move.destination->failure) {
+        if (!result.error) {
+          result.error = error;
+        }
         continue;
       }
       try {

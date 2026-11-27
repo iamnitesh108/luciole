@@ -137,6 +137,10 @@ namespace {
         || error.kind == luciole::FileErrorKind::NotDirectory;
   }
   std::optional<std::vector<std::string>> relativePath(const luciole::Location& ancestor, luciole::Location location) {
+    // Cheap rejection first: the walk below builds a GFile per level and callers run it pairwise.
+    if (location != ancestor && !location.isInside(ancestor)) {
+      return std::nullopt;
+    }
     std::vector<std::string> path;
     while (path.size() <= 64) {
       if (location == ancestor) {

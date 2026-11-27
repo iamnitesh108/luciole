@@ -4,6 +4,7 @@
 #include "fs/system_mounts.h"
 #include "operations/archive_icons.h"
 #include "operations/archive_work.h"
+#include "operations/transfer_writeback.h"
 
 #include <filesystem>
 #include <glib.h>
@@ -16,6 +17,7 @@ struct luciole::ArchiveService::State : std::enable_shared_from_this<State> {
     std::vector<Location> sources;
     std::optional<Location> destination;
     ArchiveFormat format;
+    ArchiveCompressionLevel level = ArchiveCompressionLevel::Balanced;
     std::vector<std::string> selected;
     std::shared_ptr<const ArchiveCatalog> expected;
     std::shared_ptr<archive_work::Passwords> passwords;
@@ -40,6 +42,7 @@ struct luciole::ArchiveService::State : std::enable_shared_from_this<State> {
   std::shared_ptr<State> transferLifetime;
   std::vector<TransferResult> results;
   explicit State(ArchiveLimits value) : limits(value) {}
+  State(transfer::WritebackOps ops, ArchiveLimits value) : limits(value), transfers(std::move(ops)) {}
   ~State() {
     if (timer) {
       g_source_destroy(timer);
@@ -107,6 +110,17 @@ struct luciole::ArchiveService::State : std::enable_shared_from_this<State> {
     );
     notify();
   }
+  // Returns whether a pending password prompt was cancelled and cleaned up.
+  bool cancelPassword() {
+    if (phase != ArchivePhase::WaitingPassword) {
+      return false;
+    }
+    request.reset();
+    password.reset();
+    error = FileError{FileErrorKind::Cancelled, "Archive operation cancelled."};
+    clean({});
+    return true;
+  }
   void transferChanged() {
     if (transfers.busy()) {
       notify();
@@ -167,7 +181,8 @@ struct luciole::ArchiveService::State : std::enable_shared_from_this<State> {
   }
   bool start(
       Operation operation, std::vector<Location> sources, const std::optional<Location>& destination,
-      ArchiveFormat format, std::vector<std::string> selected, std::shared_ptr<const ArchiveCatalog> known = nullptr,
+      ArchiveFormat format, ArchiveCompressionLevel level, std::vector<std::string> selected,
+      std::shared_ptr<const ArchiveCatalog> known = nullptr,
       std::shared_ptr<archive_work::Passwords> passwords = nullptr
   ) {
     if (phase != ArchivePhase::Idle || closing || sources.empty()) {
@@ -198,6 +213,7 @@ struct luciole::ArchiveService::State : std::enable_shared_from_this<State> {
         std::move(sources),
         destination,
         format,
+        level,
         std::move(selected),
         std::move(expected),
         passwords ? std::move(passwords) : std::make_shared<archive_work::Passwords>()
@@ -232,7 +248,7 @@ struct luciole::ArchiveService::State : std::enable_shared_from_this<State> {
           }
           if (task.operation == Operation::Compress) {
             return archive_work::compress(
-                task.sources, *task.destination, task.format, limits, token, *progress, *task.passwords
+                task.sources, *task.destination, task.format, task.level, limits, token, *progress, *task.passwords
             );
           }
           return archive_work::extract(
@@ -285,15 +301,28 @@ luciole::ArchiveService::ArchiveService(ArchiveLimits limits) : m_state(std::mak
     }
   });
 }
+luciole::ArchiveService::ArchiveService(transfer::WritebackOps ops, ArchiveLimits limits)
+    : m_state(std::make_shared<State>(std::move(ops), limits)) {
+  const std::weak_ptr<State> weak = m_state;
+  m_state->transfers.setChangedCallback([weak] {
+    if (const auto owner = weak.lock()) {
+      owner->transferChanged();
+    }
+  });
+}
 luciole::ArchiveService::~ArchiveService() {
   m_state->changed = {};
   shutdown();
 }
 bool luciole::ArchiveService::inspect(Location source) {
-  return m_state->start(State::Operation::Inspect, {std::move(source)}, std::nullopt, ArchiveFormat::Zip, {});
+  return m_state->start(
+      State::Operation::Inspect, {std::move(source)}, std::nullopt, ArchiveFormat::Zip,
+      ArchiveCompressionLevel::Balanced, {}
+  );
 }
 bool luciole::ArchiveService::compress(
-    std::vector<Location> sources, Location destination, ArchiveFormat format, std::string password
+    std::vector<Location> sources, Location destination, ArchiveFormat format, ArchiveCompressionLevel level,
+    std::string password
 ) {
   auto passwords = std::make_shared<archive_work::Passwords>();
   if (!password.empty()) {
@@ -305,7 +334,8 @@ bool luciole::ArchiveService::compress(
     }
   }
   return m_state->start(
-      State::Operation::Compress, std::move(sources), std::move(destination), format, {}, nullptr, std::move(passwords)
+      State::Operation::Compress, std::move(sources), std::move(destination), format, level, {}, nullptr,
+      std::move(passwords)
   );
 }
 bool luciole::ArchiveService::extract(
@@ -313,8 +343,8 @@ bool luciole::ArchiveService::extract(
     std::shared_ptr<const ArchiveCatalog> expected
 ) {
   return m_state->start(
-      State::Operation::Extract, {std::move(source)}, std::move(destination), ArchiveFormat::Zip, std::move(selected),
-      std::move(expected)
+      State::Operation::Extract, {std::move(source)}, std::move(destination), ArchiveFormat::Zip,
+      ArchiveCompressionLevel::Balanced, std::move(selected), std::move(expected)
   );
 }
 bool luciole::ArchiveService::openMember(const std::string& path) {
@@ -322,30 +352,31 @@ bool luciole::ArchiveService::openMember(const std::string& path) {
     return false;
   }
   return m_state->start(
-      State::Operation::Open, {m_state->catalog->source}, m_state->catalog->source, ArchiveFormat::Zip, {path}
+      State::Operation::Open, {m_state->catalog->source}, m_state->catalog->source, ArchiveFormat::Zip,
+      ArchiveCompressionLevel::Balanced, {path}
   );
 }
 void luciole::ArchiveService::cancel() {
+  if (flushPhase() == TransferFlush::Final) {
+    return;
+  }
   m_state->cancel.cancel();
   m_state->transfers.cancel();
-  if (m_state->phase == ArchivePhase::WaitingPassword) {
-    m_state->request.reset();
-    m_state->password.reset();
-    m_state->error = FileError{FileErrorKind::Cancelled, "Archive operation cancelled."};
-    m_state->clean({});
-  }
+  m_state->cancelPassword();
 }
 void luciole::ArchiveService::shutdown() {
   if (m_state->closing) {
     return;
   }
   m_state->closing = true;
-  cancel();
-  if (!busy()) {
+  m_state->cancel.cancel();
+  m_state->transfers.shutdown();
+  if (!m_state->cancelPassword() && !busy()) {
     m_state->clean({});
   }
 }
 bool luciole::ArchiveService::busy() const { return m_state->phase != ArchivePhase::Idle; }
+luciole::TransferFlush luciole::ArchiveService::flushPhase() const { return m_state->transfers.flushPhase(); }
 luciole::ArchivePhase luciole::ArchiveService::phase() const { return m_state->phase; }
 std::uint64_t luciole::ArchiveService::bytes() const {
   return m_state->phase == ArchivePhase::Transferring ? m_state->transfers.bytes() : m_state->progress.bytes.load();

@@ -4,6 +4,7 @@
 #include "fs/gio_interop.h"
 
 #include <stdexcept>
+#include <string_view>
 #include <utility>
 
 namespace {
@@ -110,5 +111,12 @@ std::optional<std::string> luciole::Location::displayName() const {
 }
 
 bool luciole::Location::isInside(const Location& ancestor) const {
+  // Canonical file: URIs compare by string; skip building two GFiles per call.
+  if (m_uri.starts_with("file:") && ancestor.m_uri.starts_with("file:")) {
+    const std::string_view prefix = ancestor.m_uri;
+    return m_uri.size() > prefix.size()
+        && m_uri.starts_with(prefix)
+        && (prefix.ends_with('/') || m_uri[prefix.size()] == '/');
+  }
   return g_file_has_prefix(gioFile(*this).get(), gioFile(ancestor).get()) != FALSE;
 }

@@ -5,7 +5,9 @@
 #include "fs/transfer_types.h"
 #include "operations/operation_history.h"
 #include "operations/transfer_copy.h"
+#include "operations/transfer_pacing.h"
 #include "operations/transfer_service.h"
+#include "operations/transfer_writeback.h"
 
 #include <cstddef>
 #include <functional>
@@ -45,7 +47,7 @@ namespace luciole::transfer {
   struct PendingMove {
     Node* node;
     Tree tree;
-    Fd destination;
+    Writeback::Volume* destination;
     // The node's outcome once its source is removed.
     TransferOutcome outcome = TransferOutcome::Moved;
     std::shared_ptr<const CopiedMoveEffect> proof;
@@ -62,6 +64,7 @@ namespace luciole::transfer {
     Work(CancelToken cancel, std::atomic<std::uint64_t>& copied, Choose ask)
         : CopyWork(std::move(cancel), copied), choose(std::move(ask)) {}
     Choose choose;
+    Writeback writeback;
     // Optional successful same-filesystem rename capture. False stops further optional capture.
     std::function<bool(const Source&, const Location&, int, int)> recordMove;
     std::function<std::shared_ptr<const MoveEffect>(const Source&, const Location&, int)> prepareMove;
@@ -99,11 +102,16 @@ namespace luciole::transfer {
   // Private staging folder inside a destination; removed on destruction unless retained.
   class Stage {
   public:
-    Stage(int parent, CopyWork& work);
+    Stage(int parent, CopyWork& work, std::string parentPath = {});
     ~Stage();
     Stage(const Stage&) = delete;
     Stage& operator=(const Stage&) = delete;
     bool clear() noexcept;
+    // A failed post-exchange flush leaves the displaced file in this stage.
+    void flushReplacement(Writeback& writeback, Writeback::Volume& volume);
+    // Pins the parent descriptor and stage identity so cancellation can hand off removal without syscalls.
+    void prepareAsyncCleanup();
+    DetachedStage detachForCleanup() noexcept;
     int fd() const { return m_fd.get(); }
     const std::string& name() const { return m_name; }
     void retain() { m_cleaned = true; }
@@ -112,10 +120,31 @@ namespace luciole::transfer {
   private:
     int m_parent;
     CopyWork& m_work;
+    std::string m_parentPath;
     std::string m_name;
     Fd m_fd;
+    Fd m_ownedParent;
+    struct stat m_identity{};
+    std::string m_path;
     bool m_cleaned = false;
     bool m_keepContents = false;
+  };
+
+  // Scopes destination pacing and async cancelled-stage handoff around one copyTree() call.
+  class PacingScope {
+  public:
+    PacingScope(Work& work, Stage& stage, Writeback::Volume& volume);
+    ~PacingScope();
+    PacingScope(const PacingScope&) = delete;
+    PacingScope& operator=(const PacingScope&) = delete;
+
+  private:
+    CopyWork& m_work;
+    Stage& m_stage;
+    std::size_t m_previousPaceLimit;
+    bool* m_previousRangeSyncUnsupported;
+    const WritebackOps* m_previousOps;
+    std::function<void()> m_previousPrepare;
   };
 
   Fd openSourceParent(const Source& source);
@@ -125,5 +154,5 @@ namespace luciole::transfer {
   // Every job flushes before it reports outcomes.
   void flushMoves(Work& work);
   std::size_t retryCount(const Node& node);
-  TransferResult snapshot(const Node& node);
+  TransferResult snapshot(Node& node);
 } // namespace luciole::transfer

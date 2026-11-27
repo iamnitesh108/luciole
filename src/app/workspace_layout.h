@@ -4,7 +4,7 @@
 
 // Geometry shared by the workspace window chrome and its pages.
 constexpr float kWorkspaceInset = Style::spaceSm;
-constexpr float kTabStripHeight = Style::controlHeightSm + 2.0F * Style::spaceXs;
+constexpr float kTabStripHeight = Style::controlHeightSm + 2.0F * kWorkspaceInset;
 constexpr float kNavigationToolbarHeight = 54.0F;
 // The pane's rounded top-left corner, following the corner roundness setting.
 inline float workspaceRadius() { return Style::scaledRadiusXl(); }

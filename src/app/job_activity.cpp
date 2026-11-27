@@ -157,6 +157,11 @@ namespace {
       activity.title = (job.historyReplay() == HistoryReplay::Undo ? "Undo: " : "Redo: ") + activity.title;
     }
     if (job.running()) {
+      if (service.flushPhase() != luciole::TransferFlush::None) {
+        activity.state = ActivityState::Working;
+        activity.summary = "Writing to device…";
+        return;
+      }
       activity.state = service.bytes() || service.completed() ? ActivityState::Working : ActivityState::Preparing;
       activity.summary = std::format(
           "{} transferred · {} of {} source items", sizeText(service.bytes()), service.completed(), service.total()
@@ -184,7 +189,8 @@ namespace {
         activity.summary = "Extracting…";
         break;
       case luciole::ArchivePhase::Transferring:
-        activity.summary = "Publishing output…";
+        activity.summary =
+            service.flushPhase() == luciole::TransferFlush::None ? "Publishing output…" : "Writing to device…";
         break;
       case luciole::ArchivePhase::Cleaning:
         activity.summary = "Cleaning up…";

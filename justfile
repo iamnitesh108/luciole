@@ -251,3 +251,7 @@ clean m=mode:
 
 [arg("m", pattern="debug|release|asan")]
 rebuild m=mode: (clean m) (build m)
+
+# Regenerate the user-guide screenshots in a nested compositor (needs grim, wtype, wlrctl, umbriel).
+screenshots:
+    tools/screenshots.sh

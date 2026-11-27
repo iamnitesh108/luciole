@@ -5,9 +5,12 @@
 #include "operations/create_receipt.h"
 #include "operations/history_mount.h"
 #include "operations/move_receipt.h"
+#include "operations/transfer_pacing.h"
 
 #include <algorithm>
 #include <array>
+#include <glib.h>
+#include <limits>
 #include <tuple>
 #include <utility>
 #include <vector>
@@ -69,7 +72,9 @@ bool OperationJob::cancellable() const {
   case JobKind::BatchRename:
     return service<luciole::BatchRenameService>().applying();
   case JobKind::Transfer:
+    return running() && service<luciole::TransferService>().flushPhase() != luciole::TransferFlush::Final;
   case JobKind::Archive:
+    return running() && service<luciole::ArchiveService>().flushPhase() != luciole::TransferFlush::Final;
   case JobKind::Trash:
   case JobKind::Restore:
   case JobKind::EmptyTrash:
@@ -116,6 +121,10 @@ bool OperationJob::resolve(std::uint64_t id, luciole::TransferConflictChoice cho
 OperationHub::OperationHub(const luciole::TabWorkspace& workspace) : m_workspace(workspace) {}
 
 OperationHub::~OperationHub() {
+  if (m_shutdownTimer) {
+    g_source_destroy(m_shutdownTimer);
+    g_source_unref(std::exchange(m_shutdownTimer, nullptr));
+  }
   m_lifetime.reset();
   m_owners.clear();
   for (auto& [id, job] : m_jobs) {
@@ -236,6 +245,20 @@ void OperationHub::update(std::optional<luciole::WindowId> preferred) {
     activity.id = ++m_next;
     activity.title = "Discard undo data";
     activity.summary = "Retained item needs inspection";
+    activity.state = luciole::ActivityState::Failed;
+    activity.finished = true;
+    activity.report = std::make_shared<const std::string>(std::move(error.message));
+    m_finishedActivities.push_front(std::move(activity));
+    while (m_finishedActivities.size() > 12) {
+      m_finishedActivities.pop_back();
+    }
+    notifyActivity();
+  }
+  for (auto& error : luciole::transfer::takeCleanupErrors()) {
+    luciole::JobActivity activity;
+    activity.id = ++m_next;
+    activity.title = "Clean up cancelled transfer";
+    activity.summary = "Temporary folder needs inspection";
     activity.state = luciole::ActivityState::Failed;
     activity.finished = true;
     activity.report = std::make_shared<const std::string>(std::move(error.message));
@@ -381,10 +404,27 @@ bool OperationHub::removalReady(const luciole::Location& root) const {
       && !luciole::CopyReceipt::cleanupPending()
       && !luciole::CreateReceipt::cleanupPending()
       && !luciole::MoveReceipt::cleanupPending()
+      && !luciole::transfer::cleanupPendingOn(root)
       && std::ranges::none_of(m_owners, [&](const auto& item) { return item.second->driveReadersBusy(root); });
 }
 
-void OperationHub::shutdown() {
+void OperationHub::shutdown(std::chrono::milliseconds cleanupTimeout) {
+  if (!m_shutdownTimer && !m_shutdownTimedOut) {
+    const auto ms =
+        static_cast<guint>(std::clamp<std::int64_t>(cleanupTimeout.count(), 0, std::numeric_limits<guint>::max()));
+    m_shutdownTimer = g_timeout_source_new(ms);
+    g_source_set_callback(
+        m_shutdownTimer,
+        [](gpointer data) -> gboolean {
+          auto* hub = static_cast<OperationHub*>(data);
+          hub->m_shutdownTimedOut = true;
+          g_source_unref(std::exchange(hub->m_shutdownTimer, nullptr));
+          return G_SOURCE_REMOVE;
+        },
+        this, nullptr
+    );
+    g_source_attach(m_shutdownTimer, g_main_context_default());
+  }
   ++m_historyGeneration;
   m_copyReceipt.reset();
   m_moveReceipt.reset();
@@ -392,6 +432,8 @@ void OperationHub::shutdown() {
     (void)id;
     if (job->kind() == JobKind::Archive) {
       job->service<luciole::ArchiveService>().shutdown();
+    } else if (job->kind() == JobKind::Transfer) {
+      job->service<luciole::TransferService>().shutdown();
     } else {
       job->cancel();
     }
@@ -405,6 +447,13 @@ bool OperationHub::busy() const {
       || luciole::CreateReceipt::cleanupPending()
       || luciole::MoveReceipt::cleanupPending()
       || std::ranges::any_of(m_jobs, [](const auto& item) { return item.second->running(); });
+}
+
+bool OperationHub::shutdownPending() const {
+  if (busy()) {
+    return true;
+  }
+  return luciole::transfer::cleanupPending() && !m_shutdownTimedOut;
 }
 
 bool OperationHub::historyReplayBusy() const {

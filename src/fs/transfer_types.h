@@ -18,6 +18,7 @@ namespace luciole {
   // Namespace eligibility only. The worker's staged symlink operation checks actual provider support.
   std::optional<std::string> transferLinkTarget(const Location& source, const Location& destination);
 
+  enum class TransferFlush { None, Device, Final };
   enum class TransferAction { Move, Copy, Link };
   enum class TransferOutcome { Moved, Copied, Skipped, Failed, Cancelled, Partial, Linked, Deleted };
   struct TransferResult {

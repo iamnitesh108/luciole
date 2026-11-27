@@ -12,9 +12,11 @@
 #include "operations/transfer_service.h"
 #include "operations/trash_service.h"
 
+#include <chrono>
 #include <cstdint>
 #include <deque>
 #include <functional>
+#include <glib.h>
 #include <map>
 #include <memory>
 #include <optional>
@@ -127,9 +129,9 @@ public:
 
   // A new idle job owned by `page`; start its service right away. The hub drops the job once it is idle and only
   // the hub holds it.
-  template <typename Service>
-  std::shared_ptr<OperationJob> create(luciole::TabId page, JobScope scope = JobScope::Follow) {
-    return add(page, std::make_unique<Service>(), scope);
+  template <typename Service, typename... Args>
+  std::shared_ptr<OperationJob> create(luciole::TabId page, JobScope scope = JobScope::Follow, Args&&... args) {
+    return add(page, std::make_unique<Service>(std::forward<Args>(args)...), scope);
   }
   // Lets a page-scoped job move with its window from now on, as a job that applies changes does.
   void follow(const OperationJob& job) { m_routing.follow(job.id()); }
@@ -159,7 +161,7 @@ public:
   // starts prepared moves to Trash, then drops finished jobs.
   void update(std::optional<luciole::WindowId> preferred);
   // Cancels every job, including prepared moves to Trash; the application exits once they stop.
-  void shutdown();
+  void shutdown(std::chrono::milliseconds cleanupTimeout = std::chrono::seconds(5));
   // Ask every pane to leave a drive before explicit removal.
   void leaveDrive(const luciole::Location& root);
   // Inspect proofs on a worker and retire only history holding this mount. Retained-data cleanup can follow.
@@ -167,6 +169,8 @@ public:
   bool removalReady(const luciole::Location& root) const;
   // True while any job runs.
   bool busy() const;
+  // True while shutdown still waits for jobs or bounded detached transfer cleanup.
+  bool shutdownPending() const;
   bool historyReplayBusy() const;
   bool canUndo() const;
   bool canRedo() const;
@@ -202,6 +206,8 @@ private:
   std::deque<luciole::JobActivity> m_finishedActivities;
   std::size_t m_historyProbes = 0;
   std::size_t m_historyRetirements = 0;
+  GSource* m_shutdownTimer = nullptr;
+  bool m_shutdownTimedOut = false;
   std::shared_ptr<int> m_lifetime = std::make_shared<int>(0);
 };
 

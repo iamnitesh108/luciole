@@ -310,8 +310,13 @@ void luciole::CopiedMoveReceipt::restoreSources(
     incoming->validate(token);
     parentAt(origin.location, origin.parent->get());
     vacant(origin.location, origin.parent->get());
-    transfer::Stage stage(origin.parent->get(), work);
-    (void)transfer::copyTree(incoming->parent(), *incoming->m_destination.basename(), stage.fd(), "item", work, 0);
+    auto& volume = work.writeback.observe(origin.parent->get(), statFd(origin.parent->get()).st_dev);
+    const auto parentPath = origin.location.parent() ? origin.location.parent()->nativePath().value_or("") : "";
+    transfer::Stage stage(origin.parent->get(), work, parentPath);
+    {
+      const transfer::PacingScope pacing(work, stage, volume);
+      (void)transfer::copyTree(incoming->parent(), *incoming->m_destination.basename(), stage.fd(), "item", work, 0);
+    }
     incoming->validate(token);
     if (work.metadataIncomplete) {
       throwFileError(FileErrorKind::Unsupported, "The original filesystem cannot preserve some copied metadata.");

@@ -22,6 +22,9 @@ namespace luciole {
   class HistoryRevisions;
 }
 namespace luciole::transfer {
+  class AbandonedCleanup;
+  class CopyPool;
+  struct WritebackOps;
   struct TransferCancelled : FileErrorException {
     TransferCancelled() : FileErrorException({.kind = FileErrorKind::Cancelled, .message = "Transfer cancelled."}) {}
   };
@@ -40,8 +43,8 @@ namespace luciole::transfer {
 
   // Per-job copy state shared by every item of one run.
   struct CopyWork {
-    CopyWork(CancelToken cancel, std::atomic<std::uint64_t>& copied)
-        : token(std::move(cancel)), bytes(copied), buffer(128 * 1024) {}
+    CopyWork(CancelToken cancel, std::atomic<std::uint64_t>& copied);
+    ~CopyWork();
     CancelToken token;
     std::atomic<std::uint64_t>& bytes;
     // Metadata of items this job renamed or unlinked, so later checks accept the job's own changes.
@@ -49,14 +52,25 @@ namespace luciole::transfer {
     std::shared_ptr<HistoryRevisions> history;
     std::function<void(const struct stat&, bool)> revisionObserver;
     std::vector<char> buffer;
-    bool metadataIncomplete = false;
+    std::atomic<bool> metadataIncomplete{false};
     // Kernel copy paths the destination filesystem rejected; later files skip straight to the next one.
-    bool cloneUnsupported = false;
-    bool rangeUnsupported = false;
+    std::atomic<bool> cloneUnsupported{false};
+    std::atomic<bool> rangeUnsupported{false};
+    // Set while copyTree() runs in parallel and one file failed; stops the other file copies.
+    std::atomic<bool> stopCopies{false};
+    // Active destination pacing cap (0 disables pacing on fixed local disks).
+    std::size_t paceLimit = 0;
+    bool* rangeSyncUnsupported = nullptr;
+    const WritebackOps* writebackOps = nullptr;
+    std::function<void()> prepareAsyncStage;
+    std::shared_ptr<AbandonedCleanup> abandonedCleanup;
     struct stat expected(const struct stat& original) const;
     void note(const struct stat& value);
     void noteUnlinked(const struct stat& value);
     void check() const;
+    // Threads for parallel folder copies, started on first use; joined when the work ends. Kept last so they
+    // are joined before any other member goes.
+    std::unique_ptr<CopyPool> copyPool;
   };
 
   struct Tree {
