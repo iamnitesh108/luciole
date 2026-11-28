@@ -30,6 +30,7 @@ public:
     TransferConflict,
     ArchivePassword,
     Mount,
+    DriveRemoval,
     RunProgram,
     Operations,
     OperationDetails,
