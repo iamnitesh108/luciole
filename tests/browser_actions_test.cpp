@@ -242,7 +242,7 @@ namespace {
     });
     ++data.generation;
     model.applySnapshot(data);
-    // Phone files copy and cut like other files; Pastes into the phone stay refused.
+    // Phone files copy and cut like other files; pastes into the phone stay refused.
     TEST_CHECK(R::state(A::CopyFiles, c, R::capture(c)).enabled && R::state(A::CutFiles, c, R::capture(c)).enabled);
     {
       luciole::DirectoryModel phone;
