@@ -80,7 +80,7 @@ void ApplicationChooserController::show(const std::vector<luciole::DirectoryEntr
   auto root = ui::column(
       {.align = FlexAlign::Stretch},
       luciole::dialogHeader(
-          entries.size() == 1 ? "Open With" : std::format("Open {} Files With", entries.size()), "apps",
+          entries.size() == 1 ? "Open With" : std::format("Open {} Items With", entries.size()), "apps",
           [this] { m_page.dismissPopup(); }
       ),
       ui::input(
